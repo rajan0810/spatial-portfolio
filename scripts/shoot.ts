@@ -1,152 +1,151 @@
 /**
- * Drives the running dev server in a real browser, captures console output, and
- * screenshots the editor, then the whole game arc: Play → desk → headset on →
- * boot → guardian → floor → each station → a grab and throw.
+ * Drives the running dev server in a real browser, captures console output,
+ * and screenshots the dig: the surface, leaving a token, watching it fall and
+ * settle, a slab, the floor, a dig-and-heal, and a second visitor whose drop
+ * raises the first visitor's live count.
  *
- * A scroll-driven WebGL scene cannot be verified by a passing build: shader
- * compile failures, texture CORS rejections and z-index mistakes show up only
- * at runtime, in a browser. Uses locally installed Chrome via playwright-core.
+ * A physics-and-realtime page cannot be verified by a passing build. Uses
+ * locally installed Chrome via playwright-core.
  *
  *   npx tsx scripts/shoot.ts [outDir] [baseUrl]
  */
 import { mkdir } from "node:fs/promises";
 
-import { chromium } from "playwright-core";
+import { chromium, type Browser, type Page } from "playwright-core";
 
 const OUT = process.argv[2] ?? ".shots";
 const BASE = process.argv[3] ?? "http://localhost:3000";
-const STATIONS = ["boot", "home", "justix", "outro"];
 
-async function main() {
-  await mkdir(OUT, { recursive: true });
-
-  const browser = await chromium.launch({
-    channel: "chrome",
-    args: [
-      "--use-gl=angle",
-      "--use-angle=default",
-      "--enable-unsafe-swiftshader",
-      "--ignore-gpu-blocklist",
-      // A synthetic camera feed, so hand tracking can be started headlessly.
-      "--use-fake-device-for-media-stream",
-      "--use-fake-ui-for-media-stream",
-    ],
+async function open(browser: Browser, problems: string[], forwardedFor: string) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 2,
+    // Each context is a different "visitor" for the per-IP limit.
+    extraHTTPHeaders: { "x-forwarded-for": forwardedFor },
   });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, permissions: ["camera"] });
-
-  const problems: string[] = [];
+  const page = await context.newPage();
   page.on("console", (msg) => {
     if (msg.type() === "error" || msg.type() === "warning") problems.push(`[${msg.type()}] ${msg.text()}`);
   });
   page.on("pageerror", (err) => problems.push(`[pageerror] ${err.message}`));
-  page.on("requestfailed", (req) => problems.push(`[requestfailed] ${req.url()} — ${req.failure()?.errorText}`));
-
-  await page.addInitScript(() => localStorage.clear());
+  // A fresh visitor once per context — not on every navigation, or the reload
+  // check below would be testing nothing.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("shoot:cleared")) {
+      localStorage.clear();
+      sessionStorage.setItem("shoot:cleared", "1");
+    }
+  });
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("canvas", { timeout: 45_000 });
-  await page.waitForTimeout(2500);
-  await page.screenshot({ path: `${OUT}/00-editor.png` });
-  console.log("✓ editor (scene view)");
-
-  // Select the player in the hierarchy; the camera should fly to frame it.
-  await page.getByRole("treeitem", { name: /\(Player\)/ }).click();
-  await page.waitForTimeout(1600);
-  await page.screenshot({ path: `${OUT}/01-editor-player.png` });
-  console.log("✓ editor (player selected)");
-
-  // Live-bound inspector: rename a tech surface and the 3D label should change.
-  await page.getByRole("treeitem", { name: "JustiX" }).click();
-  await page.waitForTimeout(1600);
-  await page.getByLabel("Surface 1").fill("Quest 3");
-  await page.waitForTimeout(600);
-  await page.screenshot({ path: `${OUT}/02-editor-edited.png` });
-  console.log("✓ editor (inspector edit)");
-
-  // Game tab: the rail camera.
-  await page.getByRole("tab", { name: "Game" }).click();
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: `${OUT}/03-editor-game.png` });
-  console.log("✓ editor (game tab)");
+  return page;
+}
 
-  // Play.
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await page.waitForTimeout(1800);
-  await page.screenshot({ path: `${OUT}/a-desk.png` });
-  console.log("✓ play: desk");
+async function leaveSomething(page: Page, word: string, emojiIndex: number) {
+  await page.getByRole("button", { name: "Leave something" }).click();
+  await page.getByRole("radio").nth(emojiIndex).click();
+  await page.getByLabel("Your word").fill(word);
+  await page.getByRole("button", { name: "Pick it up" }).click();
+  // Either we are holding the token, or the server said no — say which.
+  const holding = page.getByText("Click anywhere over the ground");
+  const refused = page.locator("p.text-ember, span.text-ember");
+  await Promise.race([holding.waitFor({ timeout: 20_000 }), refused.first().waitFor({ timeout: 20_000 })]);
+  if (await refused.count()) throw new Error(`drop refused: ${await refused.first().textContent()}`);
+}
 
-  await page.getByRole("button", { name: "Put on the headset" }).click();
-  await page.waitForTimeout(700);
-  await page.screenshot({ path: `${OUT}/b-donning.png` });
+const total = (page: Page) =>
+  page.evaluate(() => {
+    const m = document.body.innerText.match(/([\d,]+) have left something/);
+    return m ? Number(m[1].replace(/,/g, "")) : -1;
+  });
 
-  await page.waitForSelector('[aria-label="Starting the headset"]', { timeout: 10_000 });
-  await page.waitForTimeout(900);
-  await page.screenshot({ path: `${OUT}/c-boot.png` });
-  await page.keyboard.press("Space");
-  console.log("✓ play: boot");
+async function main() {
+  await mkdir(OUT, { recursive: true });
+  const browser = await chromium.launch({ channel: "chrome" });
+  const problems: string[] = [];
+  // Letters only: the moderation refuses digits, correctly.
+  const stamp = Array.from({ length: 4 }, () => "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)]).join("");
+  // Fresh IPs per run: the server allows one drop per IP per day.
+  const octet = Math.floor(Math.random() * 200) + 1;
+  const block = Math.floor(Math.random() * 250) + 1;
 
-  await page.getByText("Draw your Guardian").waitFor({ timeout: 10_000 });
-  await page.waitForTimeout(600);
-  const cx = 720;
-  const cy = 690;
-  await page.mouse.move(cx - 260, cy);
-  await page.mouse.down();
-  for (let i = 1; i <= 40; i += 1) {
-    const a = (i / 40) * Math.PI * 2;
-    await page.mouse.move(cx - 260 * Math.cos(a), cy + 90 * Math.sin(a), { steps: 2 });
+  // --- visitor A -------------------------------------------------------------
+  const a = await open(browser, problems, `10.${block}.${octet}.${Math.floor(Math.random() * 250) + 1}`);
+  await a.screenshot({ path: `${OUT}/00-surface.png` });
+  console.log("✓ surface");
+
+  await leaveSomething(a, `hello${stamp}`, 5);
+  await a.mouse.move(700, 640);
+  await a.waitForTimeout(400);
+  await a.screenshot({ path: `${OUT}/01-holding.png` });
+  console.log("✓ holding a token");
+
+  await a.mouse.click(700, 640);
+  await a.waitForTimeout(450);
+  await a.screenshot({ path: `${OUT}/02-falling.png` });
+  await a.getByText("It stays.").waitFor({ timeout: 40_000 });
+  const totalBefore = await total(a);
+  console.log(`✓ token settled and persisted (total ${totalBefore})`);
+
+  // --- visitor B drops; A should see the count rise live ----------------------
+  const b = await open(browser, problems, `10.${block}.${octet}.${Math.floor(Math.random() * 250) + 1}`);
+  await leaveSomething(b, `there${stamp}`, 12);
+  await b.mouse.click(420, 640);
+  await b.getByText("It stays.").waitFor({ timeout: 40_000 });
+  console.log("✓ second visitor's token settled");
+
+  await a.waitForTimeout(2000);
+  const totalAfter = await total(a);
+  console.log(`${totalAfter > totalBefore ? "✓" : "✗"} visitor A's live count ${totalBefore} → ${totalAfter}`);
+
+  // --- descend the shaft on A ------------------------------------------------------
+  const height = await a.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+  await a.evaluate((y) => window.scrollTo({ top: y }), height * 0.2);
+  await a.waitForTimeout(700);
+  await a.screenshot({ path: `${OUT}/03-slab.png` });
+  console.log("✓ a slab");
+
+  await a.evaluate((y) => window.scrollTo({ top: y }), height);
+  await a.waitForTimeout(700);
+  await a.screenshot({ path: `${OUT}/04-floor.png` });
+  console.log("✓ the floor");
+
+  // --- dig: drag our own token and watch it heal --------------------------------------
+  // Scroll so our token is mid-screen first: it rests wherever it landed — on
+  // the floor, or on top of a slab.
+  const probe = () => a.evaluate(() => (window as unknown as { __digPose?: () => { x: number; y: number } | null }).__digPose?.() ?? null);
+  const where = await probe();
+  if (where) {
+    await a.evaluate((dy) => window.scrollBy({ top: dy }), where.y - 450);
+    await a.waitForTimeout(600);
   }
-  await page.screenshot({ path: `${OUT}/d-guardian.png` });
-  await page.mouse.up();
-  console.log("✓ play: guardian");
-
-  await page.getByText("Confirm floor level").waitFor({ timeout: 10_000 });
-  await page.waitForTimeout(500);
-  await page.mouse.click(260, 720);
-  await page.waitForTimeout(1200);
-  console.log("✓ play: floor");
-
-  const height = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
-  for (let i = 0; i < STATIONS.length; i += 1) {
-    await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), (i / (STATIONS.length - 1)) * height);
-    await page.waitForTimeout(1500);
-    await page.screenshot({ path: `${OUT}/${i}-${STATIONS[i]}.png` });
-    console.log(`✓ play: ${STATIONS[i]}`);
-  }
-
-  await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), (2 / (STATIONS.length - 1)) * height);
-  await page.waitForTimeout(1500);
-  await page.mouse.move(720, 280);
-  await page.waitForTimeout(200);
-  await page.mouse.down();
-  await page.mouse.move(520, 420, { steps: 12 });
-  await page.waitForTimeout(120);
-  await page.screenshot({ path: `${OUT}/h-grab.png` });
-  await page.mouse.move(980, 300, { steps: 4 });
-  await page.mouse.up();
-  console.log("✓ play: grab + throw");
-
-  // Hand tracking: answer the prompt, wait for the model, screenshot the status.
-  await page.getByRole("button", { name: "On", exact: true }).click().catch(() => {});
-  const enable = page.getByRole("button", { name: "Enable" });
-  await enable.waitFor({ timeout: 8000 }).catch(() => {});
-  if (await enable.count()) {
-    await enable.click();
-    await page.getByText(/Show your hand|Hand tracked|Camera unavailable/).waitFor({ timeout: 60_000 });
-    await page.waitForTimeout(800);
-    await page.screenshot({ path: `${OUT}/j-hands.png` });
-    console.log("✓ play: hand tracking started");
+  const pose = await probe();
+  if (pose && pose.y > 0 && pose.y < 900) {
+    await a.mouse.move(pose.x, pose.y);
+    await a.mouse.down();
+    await a.mouse.move(pose.x + 200, pose.y - 180, { steps: 16 });
+    await a.waitForTimeout(150);
+    await a.screenshot({ path: `${OUT}/05-digging.png` });
+    await a.mouse.up();
+    await a.waitForTimeout(9000);
+    await a.screenshot({ path: `${OUT}/06-healed.png` });
+    const after = await a.evaluate(() => (window as unknown as { __digPose?: () => { x: number; y: number } | null }).__digPose?.() ?? null);
+    const healed = after ? Math.hypot(after.x - pose.x, after.y - pose.y) < 12 : false;
+    console.log(`${healed ? "✓" : "✗"} dig and heal (drift ${after ? Math.hypot(after.x - pose.x, after.y - pose.y).toFixed(1) : "?"}px)`);
   } else {
-    console.log("· hand tracking prompt not shown");
+    console.log(`· token not on screen for the dig (pose ${JSON.stringify(pose)})`);
   }
 
-  // Stop: back to the editor, scene intact.
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await page.waitForTimeout(1500);
-  await page.screenshot({ path: `${OUT}/04-editor-after-stop.png` });
-  console.log("✓ stop → editor");
+  // --- reload: it is still there -----------------------------------------------------
+  await a.reload({ waitUntil: "domcontentloaded" });
+  await a.waitForSelector("canvas", { timeout: 45_000 });
+  await a.waitForTimeout(1500);
+  console.log((await a.getByText("It stays.").count()) ? "✓ reload remembers you left something" : "✗ reload forgot");
 
-  await page.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
-  await page.screenshot({ path: `${OUT}/g-flat.png`, fullPage: true });
+  await a.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
+  await a.waitForTimeout(600);
+  await a.screenshot({ path: `${OUT}/07-flat.png`, fullPage: true });
   console.log("✓ flat");
 
   await browser.close();

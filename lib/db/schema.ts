@@ -1,9 +1,11 @@
 import {
   boolean,
   date,
+  index,
   integer,
   jsonb,
   pgTable,
+  real,
   text,
   timestamp,
   uuid,
@@ -115,3 +117,42 @@ export type Achievement = typeof achievements.$inferSelect;
 export type TimelineEntry = typeof timeline.$inferSelect;
 export type Skill = typeof skills.$inferSelect;
 export type Profile = typeof profile.$inferSelect;
+
+/**
+ * A visitor's token in the dig: an emoji and a word, dropped once, kept forever.
+ *
+ * Fully public: everything in this row is meant to be seen. Anything that must
+ * not be seen — the IP hash used for rate limiting and the secret that lets
+ * the dropper write the rest pose once — lives in `dropSecrets`, a separate
+ * table with no public policy at all. Keeping secrets out of this table is what
+ * lets Realtime broadcast inserts and updates on it without a leak.
+ */
+export const drops = pgTable(
+  "drops",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    emoji: text("emoji").notNull(),
+    word: text("word").notNull(),
+    /** World-space rest pose, written exactly once by the dropping client. */
+    x: real("x").notNull().default(0),
+    y: real("y").notNull().default(0),
+    angle: real("angle").notNull().default(0),
+    settled: boolean("settled").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("drops_created_idx").on(t.createdAt)],
+);
+
+export const dropSecrets = pgTable(
+  "drop_secrets",
+  {
+    dropId: uuid("drop_id").primaryKey().references(() => drops.id, { onDelete: "cascade" }),
+    ipHash: text("ip_hash").notNull(),
+    editToken: text("edit_token").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("drop_secrets_ip_idx").on(t.ipHash, t.createdAt)],
+);
+
+export type Drop = typeof drops.$inferSelect;

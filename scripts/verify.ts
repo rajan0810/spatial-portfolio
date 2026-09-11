@@ -1,149 +1,122 @@
 /**
- * Runtime verification of the plan's non-negotiables.
- *
- * These are the claims that are easy to assert and hard to actually hold:
- * reduced-motion honesty, mobile viability, keyboard access through the whole
- * headset arc, and the accessibility behaviour of an overlay that keeps four
- * stations in the DOM at once.
+ * Runtime verification of the dig's non-negotiables.
  *
  *   npx tsx scripts/verify.ts [baseUrl]
+ *
+ * Needs the dev server running and .env.local for the PostgREST checks.
  */
-import { chromium, type Page } from "playwright-core";
+import { config } from "dotenv";
+import { chromium } from "playwright-core";
+
+config({ path: ".env.local", quiet: true });
 
 const BASE = process.argv[2] ?? "http://localhost:3000";
-
 const results: { name: string; pass: boolean; detail: string }[] = [];
 const check = (name: string, pass: boolean, detail: string) => results.push({ name, pass, detail });
 
-/** Keyboard-only path from the editor, through the desk, to the live environment. */
-async function wearByKeyboard(page: Page) {
-  await page.keyboard.press("Meta+p");
-  await page.getByRole("button", { name: "Put on the headset" }).waitFor({ timeout: 10_000 });
-  await page.getByRole("button", { name: "Put on the headset" }).focus();
-  await page.keyboard.press("Enter");
-  // Boot may be skipped entirely under reduced motion.
-  const boot = page.locator('[aria-label="Starting the headset"]');
-  if (await boot.count()) await page.keyboard.press("Space");
-  await page.getByRole("button", { name: /roomscale default|Keep the last boundary/ }).click();
-  await page.getByRole("button", { name: "Confirm" }).click();
-  await page.locator('nav[aria-label="Stations"]').waitFor({ timeout: 10_000 });
+async function rest(path: string, init: RequestInit = {}) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  return fetch(`${url}/rest/v1/${path}`, {
+    ...init,
+    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
+  });
 }
 
 async function main() {
-  const browser = await chromium.launch({
-    channel: "chrome",
-    args: ["--use-gl=angle", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
-  });
-
-  // --- reduced motion: no boot sequence, still fully navigable --------------
+  // --- the public door: PostgREST with the anon key -----------------------------
   {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, reducedMotion: "reduce" });
-    await page.addInitScript(() => localStorage.clear());
-    await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 45_000 });
-    await page.waitForTimeout(1200);
+    const read = await rest("drops?select=*&limit=1");
+    const rows = (await read.json()) as Record<string, unknown>[];
+    check("anon can read drops", read.ok, `http ${read.status}, ${rows.length} row(s)`);
+    const leaked = rows[0] ? Object.keys(rows[0]).filter((k) => /token|ip/.test(k)) : [];
+    check("no secret columns in drops", leaked.length === 0, leaked.length ? `leaked: ${leaked.join(", ")}` : "clean");
 
-    await page.getByRole("button", { name: "Play", exact: true }).click();
-    await page.getByRole("button", { name: "Put on the headset" }).click();
-    await page.waitForTimeout(900);
-    const bootShown = await page.locator('[aria-label="Starting the headset"]').count();
-    check("reduced motion skips the boot sequence", bootShown === 0, `boot overlay elements: ${bootShown}`);
+    const secrets = await rest("drop_secrets?select=*&limit=1");
+    check("drop_secrets invisible to anon", !secrets.ok, `http ${secrets.status}`);
 
-    await page.getByRole("button", { name: "Use roomscale default" }).click();
-    await page.getByRole("button", { name: "Confirm" }).click();
-    const stations = await page.locator('nav[aria-label="Stations"] button').count();
-    check("reduced motion reaches a navigable environment", stations > 0, `${stations} station buttons`);
-    await page.close();
+    const insert = await rest("drops", { method: "POST", body: JSON.stringify({ emoji: "🔥", word: "pwned" }) });
+    check("anon cannot insert a drop", !insert.ok, `http ${insert.status}`);
+
+    const update = await rest("drops?settled=eq.true&limit=1", {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ word: "pwned" }),
+    });
+    const changed = update.ok ? ((await update.json()) as unknown[]).length : 0;
+    check("anon cannot update a drop", changed === 0, `${changed} row(s) changed`);
+
+    const del = await rest("drops?word=eq.pwned", { method: "DELETE", headers: { Prefer: "return=representation" } });
+    const deleted = del.ok ? ((await del.json()) as unknown[]).length : 0;
+    check("anon cannot delete a drop", deleted === 0, `${deleted} row(s) deleted`);
   }
 
-  // --- keyboard: the whole arc without a pointer, then inert stations ------
+  const browser = await chromium.launch({ channel: "chrome" });
+
+  // --- moderation + rate limit, through the real UI ----------------------------------
   {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const ip = `192.0.2.${(Date.now() % 250) + 1}`;
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: { "x-forwarded-for": ip } });
+    const page = await context.newPage();
     await page.addInitScript(() => localStorage.clear());
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("canvas", { timeout: 45_000 });
-    await page.waitForTimeout(1200);
 
+    await page.getByRole("button", { name: "Leave something" }).click();
+    await page.getByLabel("Your word").fill("shit");
+    await page.getByRole("button", { name: "Pick it up" }).click();
+    check("deny-listed word is refused", (await page.getByText("Not that word.").count()) > 0, "refusal shown");
+
+    await page.getByLabel("Your word").fill("http://x");
+    await page.getByRole("button", { name: "Pick it up" }).click();
+    check("non-letters are refused", (await page.getByText("Letters only").count()) > 0, "pattern enforced");
+
+    await page.getByLabel("Your word").fill("verify");
+    await page.getByRole("button", { name: "Pick it up" }).click();
+    await page.getByText("Click anywhere over the ground").waitFor({ timeout: 15_000 });
+    await page.mouse.click(640, 560);
+    await page.getByText("It stays.").waitFor({ timeout: 40_000 });
+
+    // Same IP, fresh browser state: the server must refuse a second drop.
+    const again = await context.newPage();
+    await again.addInitScript(() => localStorage.clear());
+    await again.goto(BASE, { waitUntil: "domcontentloaded" });
+    await again.waitForSelector("canvas", { timeout: 45_000 });
+    await again.getByRole("button", { name: "Leave something" }).click();
+    await again.getByLabel("Your word").fill("twice");
+    await again.getByRole("button", { name: "Pick it up" }).click();
+    const limited = await again.getByText("One token per person per day").waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
+    check("second drop from the same IP is refused", limited, limited ? "rate limit held" : "no refusal shown");
+    await context.close();
+  }
+
+  // --- keyboard, indexability, mobile, flat ----------------------------------------
+  {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("canvas", { timeout: 45_000 });
     await page.keyboard.press("Tab");
-    const firstFocus = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
-    check("skip link is the first tab stop", firstFocus.toLowerCase().includes("flat mode"), `first focus: "${firstFocus}"`);
-
-    // The editor itself: hierarchy is a real tree, inspector shows the selection.
-    const treeItems = await page.locator('[role="treeitem"]').count();
-    check("hierarchy renders the scene tree", treeItems >= 6, `${treeItems} tree items`);
-    const inspectorTitle = await page.locator(".ed-inspector__name").first().textContent();
-    check("inspector shows the selected project", (inspectorTitle ?? "").includes("JustiX"), `inspector: "${inspectorTitle}"`);
-
-    await wearByKeyboard(page);
-    await page.waitForTimeout(1500);
-
-    const inert = await page.evaluate(() => document.querySelectorAll("section[inert]").length);
-    const total = await page.evaluate(() => document.querySelectorAll("section[aria-label]").length);
-    check("inactive stations are inert", inert > 0 && inert < total, `${inert} of ${total} sections inert`);
-
-    // Once live, the desk must be gone: no stray lamp, no stray click target.
-    const deskButton = await page.getByRole("button", { name: "Put on the headset" }).count();
-    check("desk unmounts once the headset is on", deskButton === 0, `desk buttons: ${deskButton}`);
+    const first = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
+    check("skip link is the first tab stop", first.toLowerCase().includes("flat"), `first focus: "${first}"`);
+    const html = await (await fetch(BASE)).text();
+    check("project copy is in the server HTML", html.includes("JustiX") && html.includes("adversarial"), "indexable");
     await page.close();
   }
-
-  // --- returning visitor: setup remembered, straight into the environment --
   {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        "rh-headset",
-        JSON.stringify({ state: { comfort: {}, guardian: [[-2, -2], [2, -2], [2, 2], [-2, 2]] }, version: 0 }),
-      );
-    });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("canvas", { timeout: 45_000 });
-    await page.waitForTimeout(1200);
-    await page.getByRole("button", { name: "Play", exact: true }).click();
-    await page.getByRole("button", { name: "Put on the headset" }).click();
-    await page.waitForSelector('[aria-label="Starting the headset"]', { timeout: 10_000 });
-    await page.keyboard.press("Space");
-    await page.waitForTimeout(900);
-    const setupShown = await page.getByText("Draw your Guardian").count();
-    const live = await page.locator('nav[aria-label="Stations"]').count();
-    check("saved guardian skips setup", setupShown === 0 && live > 0, `setup prompts: ${setupShown}, live nav: ${live}`);
-    await page.close();
-  }
-
-  // --- mobile: renders, lens off, never scrolls sideways -------------------
-  {
-    const page = await browser.newPage({
-      viewport: { width: 390, height: 844 },
-      deviceScaleFactor: 3,
-      isMobile: true,
-      hasTouch: true,
-    });
-    await page.addInitScript(() => localStorage.clear());
-    await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 45_000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1000);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     check("no horizontal overflow on mobile", overflow <= 1, `overflow ${overflow}px`);
-    const lensOff = await page.evaluate(() => {
-      try {
-        return JSON.parse(localStorage.getItem("rh-headset") ?? "{}")?.state?.comfort?.lens === false;
-      } catch {
-        return false;
-      }
-    });
-    check("lens pass disabled on coarse pointers", lensOff, `comfort.lens === false: ${lensOff}`);
     await page.close();
   }
-
-  // --- flat mode: indexable, and genuinely WebGL-free ---------------------
   {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await page.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(1200);
-    const canvases = await page.locator("canvas").count();
-    check("flat mode mounts no canvas", canvases === 0, `${canvases} canvas elements`);
-    const h1 = await page.locator("h1").first().textContent();
-    check("flat mode has an h1", Boolean(h1?.trim()), `h1: "${h1?.trim()}"`);
+    await page.waitForTimeout(800);
+    check("flat mode mounts no canvas", (await page.locator("canvas").count()) === 0, "canvas-free");
+    check("flat mode has an h1", Boolean((await page.locator("h1").first().textContent())?.trim()), "h1 present");
     await page.close();
   }
 

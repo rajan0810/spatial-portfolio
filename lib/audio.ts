@@ -1,5 +1,3 @@
-import { useExperience } from "@/lib/store/experience";
-
 /**
  * Every sound in the site, synthesised in WebAudio. No audio files.
  *
@@ -13,7 +11,12 @@ let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let ambientNodes: { stop: () => void } | null = null;
 
-const enabled = () => useExperience.getState().comfort.audio;
+let audioOn = false;
+/** Sound is opt-in; nothing here makes a noise until this is set. */
+export const setAudioEnabled = (on: boolean) => {
+  audioOn = on;
+};
+const enabled = () => audioOn;
 
 /** Creates the context lazily; browsers require a gesture before audio can start. */
 function ensure() {

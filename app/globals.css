@@ -1,108 +1,81 @@
 @import "tailwindcss";
 
 /*
- * Visual language: a Quest home environment at night. Near-black blue ground,
- * cold panel glass, one confident blue accent, gold reserved exclusively for
- * achievements so a trophy never reads as just another card.
+ * Night dig. Earth, not UI: near-black brown ground, a cold sky above the
+ * surface, a warm headlamp, tokens that glow faintly on their own. Cream ink
+ * for type, like labels on a specimen drawer.
  */
 @theme {
-  --color-void: #05070c;
-  --color-deep: #0a0f1c;
-  --color-surface: #101829;
-
-  --color-ink: #e8edf7;
-  --color-ink-dim: #93a1ba;
-  --color-ink-faint: #5d6a82;
-
-  --color-accent: #2e7cf6;
-  --color-accent-bright: #6aa6ff;
-  --color-guardian: #3b82f6;
-  --color-gold: #ffc24b;
+  --color-earth: #0d0a08;
+  --color-earth-2: #1a1410;
+  --color-earth-3: #26201a;
+  --color-sky: #070a12;
+  --color-sky-2: #101626;
+  --color-ink: #efe6d6;
+  --color-ink-dim: #b8ad9a;
+  --color-ink-faint: #7a7061;
+  --color-lamp: #ffcf99;
+  --color-lamp-2: #ff9f5a;
+  --color-moss: #9ccf9a;
+  --color-ember: #ff7a45;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-
-  --ease-panel: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root {
   color-scheme: dark;
-
-  /* Panel glass, used by both the DOM overlay and the admin portal. */
-  --panel-fill: color-mix(in oklab, var(--color-accent) 7%, transparent);
-  --panel-edge: color-mix(in oklab, var(--color-accent-bright) 22%, transparent);
 }
 
 html {
-  background: var(--color-void);
+  background: var(--color-earth);
 }
 
 body {
-  background: var(--color-void);
+  background: var(--color-earth);
   color: var(--color-ink);
   font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-/* The scroll rail drives the camera; the native scrollbar would fight it. */
-body.experience {
   overflow-x: hidden;
 }
 
-@utility panel {
-  background: var(--panel-fill);
-  border: 1px solid var(--panel-edge);
-  backdrop-filter: blur(12px) saturate(1.2);
-  border-radius: 1rem;
+/* Stone slabs: the content, cut into rock. Always above the pile. */
+@utility slab {
+  background: linear-gradient(180deg, #2a2119 0%, #1d1712 100%);
+  border: 1px solid rgba(239, 230, 214, 0.14);
+  box-shadow:
+    0 30px 60px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(239, 230, 214, 0.08);
+  border-radius: 6px;
 }
 
-/* While the headset is on, the tracked hand in the scene is the cursor. */
-body.hand-cursor,
-body.hand-cursor * {
-  cursor: none !important;
+@utility ink-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
 }
 
-/* Webcam preview for hand tracking: small, mirrored, unmistakably a camera. */
-.hand-preview {
-  width: 96px;
-  height: 72px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #000;
-  border: 1px solid var(--panel-edge);
-}
-.hand-preview video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transform: scaleX(-1);
-}
-
-/* Quest-style focus ring — visible, on-theme, never removed. */
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--color-accent-bright);
+    outline: 2px solid var(--color-lamp);
     outline-offset: 3px;
     border-radius: 4px;
   }
 }
 
-/*
- * Honour the OS-level preference at the CSS layer too. The comfort menu in the
- * UI overlay is the user-facing control; this is the floor beneath it.
- */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }
 
-/* Skip link: first stop for keyboard users, invisible until focused. */
 .skip-link {
   position: fixed;
   top: 0;
@@ -110,12 +83,16 @@ body.hand-cursor * {
   translate: -50% -120%;
   z-index: 100;
   padding: 0.75rem 1.25rem;
-  background: var(--color-surface);
-  border: 1px solid var(--panel-edge);
+  background: var(--color-earth-3);
+  border: 1px solid rgba(239, 230, 214, 0.2);
   border-radius: 0 0 0.75rem 0.75rem;
-  transition: translate 180ms var(--ease-panel);
+  transition: translate 180ms var(--ease-out);
 }
-
 .skip-link:focus-visible {
   translate: -50% 0;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }

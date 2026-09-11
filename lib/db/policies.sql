@@ -129,6 +129,41 @@ drop trigger if exists profile_touch on public.profile;
 create trigger profile_touch before update on public.profile
   for each row execute function public.touch_updated_at();
 
+-- ---------------------------------------------------------------------------
+-- The dig: drops are fully public to read, never writable through the API.
+-- Writes happen only through server actions on the privileged connection.
+-- ---------------------------------------------------------------------------
+alter table public.drops enable row level security;
+
+drop policy if exists drops_public_read on public.drops;
+create policy drops_public_read on public.drops
+  for select to anon, authenticated using (deleted_at is null);
+
+drop policy if exists drops_admin_all on public.drops;
+create policy drops_admin_all on public.drops
+  for all to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+grant select on public.drops to anon, authenticated;
+grant update, delete on public.drops to authenticated;
+
+-- Secrets: RLS on, no policies → invisible through the API entirely.
+alter table public.drop_secrets enable row level security;
+revoke all on public.drop_secrets from anon, authenticated;
+
+-- Realtime broadcasts inserts/updates on drops, so a token falling anywhere
+-- falls on every open page. Idempotent.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'drops'
+  ) then
+    alter publication supabase_realtime add table public.drops;
+  end if;
+end $$;
+
 -- Partial index for the common lookup: a published project by slug.
 create index if not exists projects_slug_live_idx
   on public.projects (slug) where published = true and deleted_at is null;

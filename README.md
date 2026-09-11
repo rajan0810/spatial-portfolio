@@ -1,159 +1,109 @@
-# Spatial Portfolio
+# The Dig
 
-A portfolio that behaves like the thing it is about. The work is VR on Meta Quest, built in a game
-engine every day — so the site **opens as the editor, with one scene loaded: Rajan.**
+A portfolio you dig through.
 
-- **Hierarchy** is the site map: `Rajan (Player)`, `Projects/JustiX`, `Skills`, `Achievements`,
-  `Timeline`, `Contact`. Click to select; double-click or `F` to frame.
-- **Scene view** is the live 3D world under a free-orbit camera, with an orange selection outline
-  and a **move gizmo you can drag**. The **Game** tab shows exactly what a player sees.
-- **Inspector** shows the selection's components — `Transform`, `Project (Script)`, `Tech`,
-  `Highlights`, `Demo (VideoPlayer)`, `Links`. **Fields are live-bound**: rename a tech surface and
-  the label on the 3D panel changes. Nothing is saved; the asterisk in the title bar and **Revert**
-  are the whole persistence story, as they should be for an editor with no Save.
-- **Console** logs selection, transforms, play/stop and every achievement unlocked in the game.
-- **▶ Play** runs the scene as the game: a headset on a desk. Pick it up; it boots; draw your
-  Guardian; confirm the floor; you are in the environment, through the lenses, with a tracked hand
-  for a cursor and panels you can grab and throw. **■ Stop** returns to the editor with the scene
-  where you left it. **⏸** halts the render loop for real; **⏭** advances exactly one frame.
-  `⌘P` toggles. **Build** is flat mode.
-- Inside Play: **use your hands.** Opt in and the webcam tracks your hand in the browser — your
-  index finger is the pointer, a pinch is a press, raise your hand to travel forward. It emits the
-  same pointer events the mouse does, so the hand cursor, grabbable panels and buttons all work
-  without knowing. The model and WASM (~8MB) load only on opt-in; frames never leave the device;
-  the camera setting is never persisted, so it is a fresh, deliberate choice every visit.
+The page is a cross-section of the ground, cut open. Every visitor leaves **one token** — an emoji
+and a word — and lets it go; it falls with physics, bounces, settles, and **stays forever**. New
+tokens land on old ones, so the pile is sedimentary: the deeper you scroll, the further back you are
+looking at who came before. Strata lines on the shaft wall are labelled by month, from where the
+tokens actually rest.
 
-A recruiter gets the inspector — a structured résumé denser than any flat page. A developer gets the
-joke instantly and starts poking. Both get the same data, from one access layer.
+What's buried in it is Rajan Hasija's work — project slabs cut into the rock, fossils for
+achievements, veins for skills, strata for the timeline — always readable, with the tokens piling
+around the text, never over it. **Dig** by dragging tokens aside; a few seconds after you let go they
+heal back to where they were. The record is what people left, not what they pushed.
+
+It's alive: a live count of who's here, other visitors' cursors as dots carrying their emoji, and
+when someone anywhere drops a token, you watch it fall on your screen. Once per visit there's an
+earthquake. Everything heals.
+
+The site gets better with age.
 
 Two front-ends over one content source:
 
 | | |
 |---|---|
-| **`/`** — the Editor | Hierarchy · Scene/Game view · Inspector · Console · ▶ Play. |
-| **`/flat`** — Flat mode ("Build") | The same content, server-rendered, **zero WebGL**. What Google indexes, and the fallback for low-power devices and reduced-motion. |
+| **`/`** — the Dig | Physics, realtime, the headlamp. |
+| **`/flat`** — Read it flat | The same content, server-rendered, **zero canvas**. What Google indexes; the fallback for low-power devices. |
 
 ## Architecture
 
-**WebGL carries the environment; the DOM carries the prose.** Panels, video, effects and the floor
-grid are rendered in three.js. All paragraph text lives in a DOM overlay above the canvas, where it
-stays crisp, selectable, translatable and reachable by a screen reader. Only short labels that must
-sit *in space* are drawn as SDF text.
-
-**Nothing that changes every frame touches React.** Scroll position, pointer parallax and render
-stats live in mutable module singletons (`lib/store/rail.ts`, `lib/store/perf.ts`) that the render
-loop reads and writes directly. Zustand holds only discrete state — comfort settings, active
-station, unlocked achievements. Fading four stations through the reconciler at 60fps would cost more
-than the entire 3D scene.
-
-**One data access layer.** `lib/data` is the only module that reads content, and both front-ends
-consume it. That is what stops the two modes from drifting into different sites.
+- **Physics:** Matter.js, sleeping bodies. Tokens are pills; content slabs are static bodies the
+  pile rests around. Healing is a spring per displaced token toward its stored rest pose, applied
+  only while it is displaced — so a pile nobody touches costs nothing.
+- **Rendering:** one fixed Canvas 2D for tokens and the headlamp; each distinct token is rasterised
+  once to a sprite (emoji text is expensive to draw per frame). **Slabs are DOM** in page space
+  above the canvas, so the case studies are selectable, indexable and reachable by assistive tech.
+- **Camera:** page scroll. World units are fixed (`WORLD_W = 1000`) and scaled to the viewport, which
+  is what makes a rest pose written on one screen correct on every other. No scroll-jacking.
+- **Consistency across clients:** the client that drops a token simulates it to rest, then writes
+  `{x, y, angle}` exactly once. Everyone else places the token *at its rest pose*, asleep — there is
+  no cross-client simulation to drift. Live drops broadcast the release point so viewers watch it
+  fall, then snap to the authoritative pose when it lands.
+- **Alive:** one Supabase Realtime channel: `postgres_changes` on `drops`, a `release` broadcast, and
+  presence for cursors and the count.
+- **Sound:** synthesised in WebAudio, opt-in, no files.
 
 ```
-app/            routes — the editor, flat mode, per-project case studies
-ui/editor/      EditorShell, TopBar, Hierarchy, Inspector, Console, Viewport
-scene/          WebGL: EditorCamera, Selection (gizmo), Rig (rail camera), PauseLoop,
-                panels/, stations/, effects/, desk/, setup/, input/, preview/
-ui/             the game's DOM layer: prose, setup, comfort, HUD, toasts, sound
-lib/store/      editor (mode, selection, overrides, console) · experience (phases,
-                comfort, guardian) · rail/hand/perf (per-frame singletons) · sceneRegistry
-lib/data/       cached, tagged content reads   <-- both modes read only this
-lib/db/         Drizzle schema + RLS policies
-scripts/        migrate, seed, screenshot, verify
+app/page.tsx              server: content (cached) + the pile (never cached, behind Suspense)
+dig/
+  Dig.tsx                 client root: canvas, scroll camera, drop flow, live wiring
+  world.ts                Matter world: walls, floor, slabs, tokens, heal springs, earthquake
+  tokens.ts               sprite cache and sizing
+  camera.ts               world ↔ screen
+  live.ts                 Realtime: changes, broadcast, presence
+  strata.ts               month bands from rest poses
+  Slab.tsx                DOM slabs; layout of Rajan's content in the shaft
+  Surface.tsx             sky, marker stone, signpost, live count, Leave-something
+  Presence.tsx            other visitors' cursors
+lib/actions/drops.ts      dropToken / settleToken — the only way a token enters the dig
+lib/moderation.ts         palette, charset, deny-list
+lib/data/                 cached, tagged content reads; drops read
+lib/db/                   Drizzle schema + RLS policies
+scripts/                  migrate, seed, shoot (walkthrough), verify
 ```
-
-**The render loop is owned by one component.** Any `useFrame` with a positive priority switches off
-R3F's automatic render. `LensPass` is therefore always mounted and is *the* renderer — drawing
-through the lens in Play and straight to the screen otherwise. Forgetting this produces a black
-viewport whose HUD still reports draw calls (from the courtroom's offscreen render).
-
-`scene/panels/Panel.tsx` is the load-bearing abstraction — nearly every visual in the scene is one
-curved, rounded, edge-lit panel, drawn in a single pass by one shader.
-
-The visit itself is a small state machine in `lib/store/experience.ts`:
-`desk → donning → boot → guardian → floor → live → doffing`. `scene/desk/` is the only lit, shaded
-scene in the site and unmounts the moment the headset is on. `scene/setup/` holds the two
-first-time-setup interactions; `scene/effects/Guardian.tsx` turns the polygon you drew into walls;
-`scene/effects/LensPass.tsx` is the full-screen pass everything is seen through.
-`scene/input/HandCursor.tsx` is the hand; `lib/store/hand.ts` is the pointer state it reads, written
-by panels from their handlers. Grab physics live inside `Panel` itself (`grabbable`), as a spring
-integrated in `useFrame` — nothing touches React while a panel is in flight. `scene/effects/mood.ts`
-is the per-station palette every atmospheric layer reads; `scene/preview/Courtroom.tsx` is the
-render-to-texture scene; `lib/audio.ts` is the synthesiser.
-
-Two hard-won rules, each of which cost a silent, error-free blank scene to learn:
-
-- **Own your `ShaderMaterial`.** Passing `uniforms` to a `<shaderMaterial>` element does not
-  guarantee the rendered material keeps that object; mutate an orphan and nothing changes. Every
-  custom material here is constructed in `useMemo` and attached with `<primitive>`.
-- **Hover state that a hand reads must be self-correcting.** A counter incremented on pointer-over
-  and decremented on pointer-out drifts the first time a hovered panel unmounts; the ray then stays
-  lit forever. Each panel remembers whether *it* is hovered and cleans up after itself.
-- **three's raycaster ignores `visible`.** A hidden object with an `onClick` still swallows clicks
-  that pass through it. The `Canvas` uses an event filter that drops hits on anything hidden anywhere
-  in its ancestry.
 
 ## Security model
 
-Content is editable at runtime through a hidden admin portal, so this matters.
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` ships in the client bundle, so Supabase's PostgREST endpoint is
+publicly reachable no matter what this app does. So:
 
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` ships inside the client bundle, which means Supabase's PostgREST
-endpoint is publicly reachable no matter what this app does. **Row Level Security is what makes that
-surface safe**, and it is verified directly against the anon key rather than trusted: drafts and
-soft-deleted rows are invisible, writes are refused, and the admin allow-list table is unreadable.
-
-The app's own Drizzle connection authenticates as a privileged role and therefore *bypasses* RLS.
-Security on that path comes from explicit `published = true and deleted_at is null` filters in
-`lib/data` and from auth checks in server actions. Two doors, two locks — see the comment in
-`lib/db/index.ts`.
-
-The forthcoming secret code that reveals `/admin` is deliberately **obscurity, not security**: it is
-compared server-side against a hashed env var and rate-limited, and it protects nothing. The real
-lock is a Supabase Auth session enforced in middleware.
+- `drops` is **fully public to read** and contains nothing that shouldn't be — which is what lets
+  Realtime broadcast its rows safely. Anything secret (the IP hash for rate limiting, the edit token
+  for the single rest-pose write) lives in `drop_secrets`, which has RLS on and **no policies**: it
+  is invisible through the API entirely.
+- The browser **never writes** either table. `dropToken` and `settleToken` are server actions on the
+  privileged connection: moderation, one drop per IP per 24h (salted hash), and a rest pose that is
+  accepted exactly once, within world bounds, only with the matching edit token.
+- All of this is verified against the anon key directly, not trusted: `npm run verify`.
 
 ## Performance budgets
 
-Enforced, not aspirational — a VR developer's portfolio dropping frames undercuts the whole argument.
-
-- Initial JS ≤ 300KB gzipped. Currently **194KB** for the editor, **173KB** for flat mode.
-- three + R3F + drei + the scene (~299KB gz) is a deferred chunk that arrives into the viewport
-  while the editor chrome is already interactive. Audio adds nothing: it is synthesised.
-- Flat mode ships zero WebGL, verified against the built output.
-- One light in the whole site — the desk lamp — and it unmounts with the desk. The environment is
-  all emissive glass; no shadow maps anywhere.
-- The lens pass is a single extra full-screen fragment pass, off on coarse-pointer devices.
-- The courtroom preview renders only while its station is on screen, at 768×432.
-- dpr capped at 1.75; MSAA off, since the panel shader antialiases its own silhouette.
-- Stations are culled by visibility, so the rail costs as much as the one station you are looking at.
+- Initial JS ≤ 300KB gzipped. Currently **266KB** for the dig (Matter + supabase-js + React),
+  **173KB** for flat mode.
+- The newest ~2,000 tokens are simulated bodies; older ones are drawn as bedrock. Sleeping bodies
+  cost nothing; the loop pauses when the tab is hidden; physics runs in fixed 60Hz substeps.
+- Flat mode ships zero canvas and zero physics, verified against the built output.
 
 ## Local development
 
 ```bash
-cp .env.local.example .env.local   # then fill in Supabase credentials
+cp .env.local.example .env.local   # Supabase credentials + a DROP_SALT
 npm install
 npm run db:setup                   # migrate, apply RLS policies, seed
 npm run dev
 ```
 
-### Scripts
-
 | | |
 |---|---|
-| `npm run db:generate` | Generate a migration after editing `lib/db/schema.ts` |
-| `npm run db:migrate` | Apply pending migrations |
-| `npm run db:policies` | Apply RLS, grants and triggers (idempotent) |
-| `npm run db:seed` | Seed profile + projects |
-| `npm run shoot` | Screenshot the editor, then Play through the whole arc — including starting hand tracking on Chrome's fake camera — in a real browser |
-| `npm run verify` | Assert reduced-motion, inert, mobile and flat-mode guarantees |
-
-`shoot` and `verify` drive the running dev server through locally installed Chrome. They exist
-because a scroll-driven WebGL scene cannot be verified by a passing build — shader compile failures,
-texture CORS rejections and z-index mistakes are invisible until something renders. All three of the
-worst bugs in this project's history were found this way, and none of them produced a build error.
+| `npm run db:generate` / `db:migrate` | Schema changes |
+| `npm run db:policies` | RLS, grants, realtime publication (idempotent) |
+| `npm run db:seed` | Profile + projects |
+| `npm run shoot` | Two visitors in real Chrome: drop, settle, persist, live count, dig-and-heal, reload |
+| `npm run verify` | RLS on the public door, secrets invisible, moderation, rate limit, indexability, mobile, flat |
 
 ## Roadmap
 
-- **Phase 2** — the secret admin portal: magic-link auth, ADB-styled editor, direct-to-storage uploads
-- **Phase 3** — remaining projects, toolbench, trophy shelf, timeline, spatial audio
-- **Phase 4** — WebXR: `Enter VR` on a real Quest
-- **Phase 5** — gamepad haptics, MR passthrough, stereo easter egg
+- Hover cards on tokens (word, date, visitor number); mobile drag tuning; bedrock baking past 2,000.
+- Achievement fossils, skill veins and timeline strata light up as that content is published.
+- Admin portal: content editing, delete a drop, ban an IP hash.
