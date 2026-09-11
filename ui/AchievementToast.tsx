@@ -24,6 +24,7 @@ const CATALOGUE: Record<string, Toast> = {
   grab: { title: "Panel grabbed", detail: "It springs back. They always do." },
   throw: { title: "Nice throw", detail: "Release velocity over 4 m/s" },
   sound: { title: "Sound on", detail: "Synthesised in WebAudio — no files" },
+  hands: { title: "Hand tracking on", detail: "Webcam, in-browser. Nothing uploaded." },
 };
 
 const STATION_AWARDS: Record<string, string> = { justix: "station-justix", outro: "station-outro" };

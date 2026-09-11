@@ -22,9 +22,17 @@ async function main() {
 
   const browser = await chromium.launch({
     channel: "chrome",
-    args: ["--use-gl=angle", "--use-angle=default", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
+    args: [
+      "--use-gl=angle",
+      "--use-angle=default",
+      "--enable-unsafe-swiftshader",
+      "--ignore-gpu-blocklist",
+      // A synthetic camera feed, so hand tracking can be started headlessly.
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+    ],
   });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2, permissions: ["camera"] });
 
   const problems: string[] = [];
   page.on("console", (msg) => {
@@ -115,6 +123,20 @@ async function main() {
   await page.mouse.move(980, 300, { steps: 4 });
   await page.mouse.up();
   console.log("✓ play: grab + throw");
+
+  // Hand tracking: answer the prompt, wait for the model, screenshot the status.
+  await page.getByRole("button", { name: "On", exact: true }).click().catch(() => {});
+  const enable = page.getByRole("button", { name: "Enable" });
+  await enable.waitFor({ timeout: 8000 }).catch(() => {});
+  if (await enable.count()) {
+    await enable.click();
+    await page.getByText(/Show your hand|Hand tracked|Camera unavailable/).waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${OUT}/j-hands.png` });
+    console.log("✓ play: hand tracking started");
+  } else {
+    console.log("· hand tracking prompt not shown");
+  }
 
   // Stop: back to the editor, scene intact.
   await page.getByRole("button", { name: "Stop", exact: true }).click();

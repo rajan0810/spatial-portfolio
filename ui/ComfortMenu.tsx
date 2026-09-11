@@ -15,6 +15,7 @@ const TOGGLES: { key: keyof ComfortSettings; label: string; hint: string }[] = [
   { key: "lens", label: "Lens rendering", hint: "Barrel distortion and chromatic fringe" },
   { key: "screenDoor", label: "Screen-door effect", hint: "The subpixel grid. You know the one." },
   { key: "audio", label: "Sound", hint: "Synthesised UI sounds and room tone" },
+  { key: "handTracking", label: "Hand tracking", hint: "Webcam. Index finger points, pinch presses." },
   { key: "perfHud", label: "Performance HUD", hint: "Live frame time and draw calls" },
 ];
 

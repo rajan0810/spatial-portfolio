@@ -11,6 +11,7 @@ import { rail } from "@/lib/store/rail";
 import { AchievementToast } from "../AchievementToast";
 import { BootOverlay } from "../BootOverlay";
 import { ComfortMenu } from "../ComfortMenu";
+import { HandTracking } from "../HandTracking";
 import { Overlay } from "../Overlay";
 import { PerfHud } from "../PerfHud";
 import { ScrollRail } from "../ScrollRail";
@@ -135,6 +136,7 @@ export function Viewport({ profile, projects }: { profile: ProfileView; projects
             <>
               <SetupOverlay />
               <SoundPrompt />
+              <HandTracking />
               <Vignette />
               <StationIndicator />
               <ComfortMenu />

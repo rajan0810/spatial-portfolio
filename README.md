@@ -17,6 +17,11 @@ engine every day — so the site **opens as the editor, with one scene loaded: R
   for a cursor and panels you can grab and throw. **■ Stop** returns to the editor with the scene
   where you left it. **⏸** halts the render loop for real; **⏭** advances exactly one frame.
   `⌘P` toggles. **Build** is flat mode.
+- Inside Play: **use your hands.** Opt in and the webcam tracks your hand in the browser — your
+  index finger is the pointer, a pinch is a press, raise your hand to travel forward. It emits the
+  same pointer events the mouse does, so the hand cursor, grabbable panels and buttons all work
+  without knowing. The model and WASM (~8MB) load only on opt-in; frames never leave the device;
+  the camera setting is never persisted, so it is a fresh, deliberate choice every visit.
 
 A recruiter gets the inspector — a structured résumé denser than any flat page. A developer gets the
 joke instantly and starts poking. Both get the same data, from one access layer.
@@ -138,7 +143,7 @@ npm run dev
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run db:policies` | Apply RLS, grants and triggers (idempotent) |
 | `npm run db:seed` | Seed profile + projects |
-| `npm run shoot` | Screenshot the editor, then Play through the whole arc, in a real browser |
+| `npm run shoot` | Screenshot the editor, then Play through the whole arc — including starting hand tracking on Chrome's fake camera — in a real browser |
 | `npm run verify` | Assert reduced-motion, inert, mobile and flat-mode guarantees |
 
 `shoot` and `verify` drive the running dev server through locally installed Chrome. They exist

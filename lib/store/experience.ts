@@ -44,6 +44,8 @@ export type ComfortSettings = {
   /** The faint subpixel grid every headset owner knows. Rides on the lens pass. */
   screenDoor: boolean;
   audio: boolean;
+  /** Webcam hand tracking: your index finger is the pointer, a pinch is a press. */
+  handTracking: boolean;
   /** fps / frame-time overlay. On by default: it is part of the argument. */
   perfHud: boolean;
 };
@@ -78,6 +80,8 @@ type ExperienceState = {
   /** Whether the one-time sound prompt has been answered this session. */
   soundPromptDone: boolean;
   setSoundPromptDone: () => void;
+  handsPromptDone: boolean;
+  setHandsPromptDone: () => void;
 };
 
 const DEFAULT_COMFORT: ComfortSettings = {
@@ -87,6 +91,7 @@ const DEFAULT_COMFORT: ComfortSettings = {
   lens: true,
   screenDoor: true,
   audio: false, // Opt-in. Autoplaying audio is hostile, and browsers block it anyway.
+  handTracking: false, // Opt-in: it needs the camera.
   perfHud: true,
 };
 
@@ -133,13 +138,15 @@ export const useExperience = create<ExperienceState>()(
 
       soundPromptDone: false,
       setSoundPromptDone: () => set({ soundPromptDone: true }),
+      handsPromptDone: false,
+      setHandsPromptDone: () => set({ handsPromptDone: true }),
     }),
     {
       name: "rh-headset",
       // Comfort settings and the drawn guardian persist — a headset remembers
       // its setup. Phase and achievement toasts replay for each visit; that
       // arc is the experience.
-      partialize: (state) => ({ comfort: state.comfort, guardian: state.guardian }),
+      partialize: (state) => ({ comfort: { ...state.comfort, handTracking: false }, guardian: state.guardian }),
     },
   ),
 );
