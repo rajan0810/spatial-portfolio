@@ -1,5 +1,5 @@
 {
-  "name": "portfolio",
+  "name": "spatial-portfolio",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -13,7 +13,9 @@
     "db:studio": "drizzle-kit studio",
     "db:policies": "tsx --env-file=.env.local scripts/apply-sql.ts lib/db/policies.sql",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
-    "db:setup": "npm run db:migrate && npm run db:policies && npm run db:seed"
+    "db:setup": "npm run db:migrate && npm run db:policies && npm run db:seed",
+    "shoot": "tsx scripts/shoot.ts",
+    "verify": "tsx scripts/verify.ts"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
