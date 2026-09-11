@@ -9,7 +9,7 @@ import { clamp01, damp, rail } from "@/lib/store/rail";
 import { RAIL_LENGTH, STATIONS, nearestStation } from "@/lib/stations";
 
 /** How far back from the current station the camera sits. */
-const VIEW_DISTANCE = 6.5;
+const VIEW_DISTANCE = 11;
 /** Eye height above the floor grid. */
 const EYE_HEIGHT = 0.15;
 /** How far the head can drift with the pointer, in world units. */

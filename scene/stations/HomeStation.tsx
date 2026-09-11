@@ -35,8 +35,8 @@ export function HomeStation({
       {/* Backing panel — the DOM headline sits directly over this. */}
       <Panel
         width={8.4}
-        height={4.2}
-        position={[0, 1.15, z]}
+        height={3.4}
+        position={[0, 2.4, z]}
         curve={0.5}
         radius={0.1}
         opacity={0}
@@ -50,7 +50,7 @@ export function HomeStation({
           index={index}
           label={tile.label}
           url={tile.url}
-          position={[(i - (tiles.length - 1) / 2) * 1.9, -0.95, z + 0.9]}
+          position={[(i - (tiles.length - 1) / 2) * 1.9, -0.5, z + 0.5]}
         />
       ))}
     </StationGroup>
@@ -95,7 +95,7 @@ function SocialTile({
       <Text
         ref={text}
         position={[0, 0, 0.06]}
-        fontSize={0.17}
+        fontSize={0.22}
         letterSpacing={0.04}
         color="#e8edf7"
         anchorX="center"

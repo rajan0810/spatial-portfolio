@@ -54,7 +54,9 @@ export function Panel({
   radius = 0.08,
   map = null,
   accent = "#2e7cf6",
-  fill = "#0a0f1c",
+  // Panel glass, not background. Must sit clearly above the backdrop's
+  // luminance or the panel reads as a hole punched in the scene.
+  fill = "#1a2540",
   hoverable = false,
   opacity = 1,
   onFrame,
@@ -85,6 +87,31 @@ export function Panel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+
+  /**
+   * The material is constructed here rather than declared as <shaderMaterial>,
+   * so this component owns the instance and its uniforms object.
+   *
+   * This matters: passing a `uniforms` prop to <shaderMaterial> does not
+   * guarantee the rendered material keeps that same object, and if it does not,
+   * every per-frame mutation (opacity, hover, time) silently writes to an
+   * orphaned object — panels stay stuck at their initial opacity of 0 and render
+   * nothing at all, with no error anywhere.
+   */
+  const material = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: panelVertexShader,
+        fragmentShader: panelFragmentShader,
+        uniforms,
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    [uniforms],
+  );
+
+  useEffect(() => () => material.dispose(), [material]);
 
   // Keep the texture uniform in sync when a video finishes loading.
   useEffect(() => {
@@ -136,14 +163,7 @@ export function Panel({
       }
       onClick={onClick ? () => onClick() : undefined}
     >
-      <shaderMaterial
-        vertexShader={panelVertexShader}
-        fragmentShader={panelFragmentShader}
-        uniforms={uniforms}
-        transparent
-        side={THREE.DoubleSide}
-        depthWrite={false}
-      />
+      <primitive object={material} attach="material" />
     </mesh>
   );
 }

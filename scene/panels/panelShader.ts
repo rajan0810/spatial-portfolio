@@ -44,46 +44,57 @@ export const panelFragmentShader = /* glsl */ `
   }
 
   void main() {
-    vec2 half = vec2(uAspect, 1.0) * 0.5;
+    // Do not rename to "half" — reserved word in GLSL, fails to compile.
+    vec2 halfExtent = vec2(uAspect, 1.0) * 0.5;
     vec2 p = (vUv - 0.5) * vec2(uAspect, 1.0);
 
-    float d = roundedBoxSDF(p, half, uRadius);
+    float d = roundedBoxSDF(p, halfExtent, uRadius);
 
     // Antialias the silhouette using the screen-space derivative, so the
     // corners stay clean at any distance down the rail.
-    float aa = fwidth(d) * 1.2;
+    float aa = fwidth(d);
     float mask = 1.0 - smoothstep(-aa, aa, d);
 
     if (mask <= 0.001) discard;
 
     // --- fill ---------------------------------------------------------------
+    bool textured = uHasMap > 0.5;
     vec3 color = uFill;
 
-    if (uHasMap > 0.5) {
+    if (textured) {
       color = texture2D(uMap, vUv).rgb;
     } else {
-      // Subtle vertical sheen so an empty panel still reads as glass.
-      float sheen = smoothstep(0.0, 1.0, 1.0 - vUv.y) * 0.35;
-      color += uAccent * sheen * 0.25;
+      // Glass must be LIGHTER than the environment it sits in, or it reads as a
+      // hole rather than a surface. uFill is deliberately well above the
+      // backdrop's ~0.03, and the sheen brightens toward the top so the panel
+      // looks lit from above.
+      float sheen = smoothstep(0.0, 1.0, vUv.y);
+      color += uAccent * (0.10 + sheen * 0.14);
     }
 
-    // --- edge glow ----------------------------------------------------------
-    // Bright hairline right at the border, falling off inward. This is the
-    // single detail that makes the panel read as Quest UI.
-    float edge = exp(-abs(d) * 90.0);
-    float innerGlow = exp(-abs(d) * 12.0) * 0.25;
-    float glowStrength = 0.55 + uHover * 0.9;
+    // --- border -------------------------------------------------------------
+    // A bright line of *constant screen width*, sized from the derivative so it
+    // stays a crisp 2px whether the panel is close or far down the rail. The
+    // previous exp() falloff was sub-pixel at every distance, which is why
+    // nothing was visible.
+    float borderWidth = aa * 1.6;
+    float border = 1.0 - smoothstep(0.0, borderWidth, abs(d + borderWidth));
 
-    color += uAccent * (edge * glowStrength + innerGlow * (0.4 + uHover * 0.6));
+    // Soft bloom inward from the edge, in world units, giving the glass depth.
+    float innerGlow = exp(-abs(d) * 9.0);
 
-    // Hover lifts the whole surface slightly, like a focused Quest panel.
-    color += uAccent * uHover * 0.06;
+    float lift = 0.7 + uHover * 0.85;
+    color += uAccent * border * lift * 1.9;
+    color += uAccent * innerGlow * (0.2 + uHover * 0.3);
+    color += uAccent * uHover * 0.05;
 
     // --- grain --------------------------------------------------------------
     color += (grain(vUv * 512.0 + uTime * 0.5) - 0.5) * 0.018;
 
-    // Glass is never fully opaque; the edge is the most solid part of it.
-    float alpha = mask * uOpacity * (0.82 + edge * 0.18);
+    // Video reads nearly opaque; empty glass stays translucent so the
+    // environment shows through it.
+    float baseAlpha = textured ? 0.96 : 0.58;
+    float alpha = mask * uOpacity * clamp(baseAlpha + border * 0.5, 0.0, 1.0);
 
     gl_FragColor = vec4(color, alpha);
   }

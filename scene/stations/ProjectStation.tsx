@@ -41,7 +41,7 @@ export function ProjectStation({
         url={project.loopVideoUrl}
         width={6.4}
         height={3.6}
-        position={[0, 1.05, z]}
+        position={[0, 2.0, z]}
         curve={0.4}
         radius={0.06}
         opacity={0}
@@ -51,8 +51,8 @@ export function ProjectStation({
       <SurfaceLabel
         index={index}
         text={project.tech[0]?.surface ?? "Demo"}
-        position={[0, 3.2, z + 0.35]}
-        size={0.2}
+        position={[0, 4.15, z + 0.35]}
+        size={0.26}
       />
 
       {wings[0] ? (
@@ -61,7 +61,7 @@ export function ProjectStation({
           surface={wings[0]}
           width={1.9}
           height={3.3}
-          position={[-4.6, 0.95, z + 1.5]}
+          position={[-5.0, 1.9, z + 0.8]}
           rotation={[0, 0.44, 0]}
         />
       ) : null}
@@ -72,7 +72,7 @@ export function ProjectStation({
           surface={wings[1]}
           width={3.3}
           height={2.3}
-          position={[4.5, 1.05, z + 1.3]}
+          position={[5.0, 2.0, z + 0.8]}
           rotation={[0, -0.4, 0]}
         />
       ) : null}
@@ -109,13 +109,13 @@ function Wing({
         index={index}
         text={surface.surface}
         position={[0, height / 2 + 0.28, 0.1]}
-        size={0.15}
+        size={0.2}
       />
       <SurfaceLabel
         index={index}
         text={surface.items.join("\n")}
         position={[0, 0, 0.12]}
-        size={0.12}
+        size={0.15}
         color="#93a1ba"
         lineHeight={1.9}
       />

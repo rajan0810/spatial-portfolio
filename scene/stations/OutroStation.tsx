@@ -17,7 +17,7 @@ export function OutroStation({ index }: { index: number }) {
       <Panel
         width={6.2}
         height={3.4}
-        position={[0, 1.0, z]}
+        position={[0, 2.0, z]}
         curve={0.55}
         radius={0.12}
         opacity={0}
@@ -28,7 +28,7 @@ export function OutroStation({ index }: { index: number }) {
       <Panel
         width={4.6}
         height={2.5}
-        position={[0, 1.0, z - 3.2]}
+        position={[0, 2.0, z - 3.2]}
         curve={0.55}
         radius={0.12}
         opacity={0}
@@ -37,7 +37,7 @@ export function OutroStation({ index }: { index: number }) {
       <Panel
         width={3.2}
         height={1.8}
-        position={[0, 1.0, z - 5.8]}
+        position={[0, 2.0, z - 5.8]}
         curve={0.55}
         radius={0.12}
         opacity={0}

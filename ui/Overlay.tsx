@@ -64,10 +64,11 @@ export function Overlay({
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10">
-      {/* Scrim: guarantees text contrast over video and the floor grid. */}
+      {/* Scrim: buys text contrast over video without erasing the floor grid,
+          which is the main depth cue in the scene. Short and weak on purpose. */}
       <div
         aria-hidden
-        className="absolute inset-x-0 bottom-0 h-[58vh] bg-gradient-to-t from-void via-void/85 to-transparent"
+        className="absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-void via-void/60 to-transparent"
       />
 
       <StationLayer ref={(el) => void (refs.current[0] = el)} label="Boot">

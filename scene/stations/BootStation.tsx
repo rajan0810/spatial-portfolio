@@ -32,7 +32,7 @@ export function BootStation({ index }: { index: number }) {
 
   return (
     <StationGroup index={index}>
-      <group ref={ring} position={[0, 0.1, z - 1.2]}>
+      <group ref={ring} position={[0, 1.9, z]}>
         {Array.from({ length: SEGMENTS }, (_, i) => {
           const angle = (i / SEGMENTS) * Math.PI * 2;
           const radius = 2.6;

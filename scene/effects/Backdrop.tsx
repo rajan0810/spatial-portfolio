@@ -46,8 +46,8 @@ const floorFragment = /* glsl */ `
   void main() {
     vec2 coord = vWorld / uSpacing;
 
-    float fine = gridLine(coord, 1.0) * 0.45;
-    float coarse = gridLine(coord * 0.2, 1.2) * 0.55;
+    float fine = gridLine(coord, 1.0) * 0.30;
+    float coarse = gridLine(coord * 0.2, 1.2) * 0.42;
 
     // Fade with distance from the camera along the rail, so the grid resolves
     // ahead of you and dissolves behind.

@@ -36,7 +36,10 @@ export function Experience({
   const featured = projects[0];
 
   return (
-    <div className="fixed inset-0 -z-10">
+    // z-0, NOT a negative z-index: body carries an opaque background, and a
+    // negative-z-index child paints beneath its parent's background, which hides
+    // the canvas completely.
+    <div className="fixed inset-0 z-0">
       <Canvas
         dpr={[1, 1.75]}
         gl={{
@@ -44,7 +47,7 @@ export function Experience({
           powerPreference: "high-performance",
           alpha: false,
         }}
-        camera={{ fov: 55, near: 0.1, far: 220, position: [0, 0.15, 6.5] }}
+        camera={{ fov: 55, near: 0.1, far: 220, position: [0, 0.15, 11] }}
       >
         <Backdrop />
         <GuardianGrid />
