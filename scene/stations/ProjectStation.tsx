@@ -151,7 +151,7 @@ function SurfaceLabel({
       | undefined;
     if (!material) return;
 
-    const weight = stationWeight(rail.progress, index, 0.8);
+    const weight = stationWeight(rail.progress, index, 0.55);
     material.opacity = damp(material.opacity, weight, 8, Math.min(delta, 1 / 20));
   });
 

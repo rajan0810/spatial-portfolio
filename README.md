@@ -1,14 +1,24 @@
 # Spatial Portfolio
 
-A portfolio that behaves like the thing it is about. The work is VR on Meta Quest, so the site is a
-Quest home environment you travel through — and from a later phase, one you can actually enter in a
-headset.
+A portfolio that behaves like the thing it is about. The work is VR on Meta Quest, so you don't visit
+this site — **you put on a headset.**
+
+The page opens on a desk. A headset rests on it under a lamp. You pick it up; it rises to meet your
+eyes and the screen goes dark. It boots. Because it has never been worn, it sets itself up — a
+completely straight-faced replay of first-time headset setup, except every step is real: you **draw
+your Guardian** by tracing a boundary on the floor, and that polygon becomes the actual boundary that
+appears around you whenever you cross between stations. You confirm floor level by touching the
+floor. Then you are in the environment, and everything you see is seen *through the lenses* — barrel
+distortion, chromatic fringing at the edges, and the faint screen-door grid every headset owner has
+learned to stop noticing. Taking the headset off is flat mode.
+
+A returning visitor's headset remembers its setup, exactly as a real one would.
 
 Two front-ends over one content source:
 
 | | |
 |---|---|
-| **`/`** — the Experience | A WebGL environment on a scroll-driven camera rail. Boot sequence, curved glass panels, guardian boundary, comfort menu, live frame-budget HUD. |
+| **`/`** — the Experience | Desk → put on → boot → draw your Guardian → confirm floor → a WebGL environment on a scroll-driven camera rail, rendered through a lens pass. Curved glass panels, comfort menu, live frame-budget HUD. |
 | **`/flat`** — Flat mode | The same content, server-rendered, **zero WebGL**. What a recruiter with forty seconds reads, what Google indexes, and the fallback for low-power devices and reduced-motion. |
 
 Flat mode is not a consolation prize. The experience is the argument; flat mode is the evidence.
@@ -41,6 +51,21 @@ scripts/        migrate, seed, screenshot, verify
 `scene/panels/Panel.tsx` is the load-bearing abstraction — nearly every visual in the scene is one
 curved, rounded, edge-lit panel, drawn in a single pass by one shader.
 
+The visit itself is a small state machine in `lib/store/experience.ts`:
+`desk → donning → boot → guardian → floor → live → doffing`. `scene/desk/` is the only lit, shaded
+scene in the site and unmounts the moment the headset is on. `scene/setup/` holds the two
+first-time-setup interactions; `scene/effects/Guardian.tsx` turns the polygon you drew into walls;
+`scene/effects/LensPass.tsx` is the full-screen pass everything is seen through.
+
+Two hard-won rules, each of which cost a silent, error-free blank scene to learn:
+
+- **Own your `ShaderMaterial`.** Passing `uniforms` to a `<shaderMaterial>` element does not
+  guarantee the rendered material keeps that object; mutate an orphan and nothing changes. Every
+  custom material here is constructed in `useMemo` and attached with `<primitive>`.
+- **three's raycaster ignores `visible`.** A hidden object with an `onClick` still swallows clicks
+  that pass through it. The `Canvas` uses an event filter that drops hits on anything hidden anywhere
+  in its ancestry.
+
 ## Security model
 
 Content is editable at runtime through a hidden admin portal, so this matters.
@@ -63,10 +88,13 @@ lock is a Supabase Auth session enforced in middleware.
 
 Enforced, not aspirational — a VR developer's portfolio dropping frames undercuts the whole argument.
 
-- Initial JS ≤ 300KB gzipped. Currently **183KB** for the experience, **173KB** for flat mode.
-- three + R3F + SDF text (~450KB gz) is a deferred chunk that downloads *behind the boot overlay*.
+- Initial JS ≤ 300KB gzipped. Currently **184KB** for the experience, **173KB** for flat mode.
+- three + R3F + SDF text + the scene (~283KB gz) is a deferred chunk that arrives while you look at
+  the desk.
 - Flat mode ships zero WebGL, verified against the built output.
-- No lights and no shadow maps anywhere. Every surface is emissive glass.
+- One light in the whole site — the desk lamp — and it unmounts with the desk. The environment is
+  all emissive glass; no shadow maps anywhere.
+- The lens pass is a single extra full-screen fragment pass, off on coarse-pointer devices.
 - dpr capped at 1.75; MSAA off, since the panel shader antialiases its own silhouette.
 - Stations are culled by visibility, so the rail costs as much as the one station you are looking at.
 

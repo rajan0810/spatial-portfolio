@@ -19,7 +19,7 @@ export function PerfProbe() {
     perf.fps = 1000 / Math.max(perf.ms, 0.0001);
     perf.calls = gl.info.render.calls;
     perf.triangles = gl.info.render.triangles;
-  });
+  }, 2); // after LensPass (priority 1), so the counters cover the whole frame
 
   return null;
 }

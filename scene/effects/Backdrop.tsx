@@ -1,10 +1,11 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
-import { rail } from "@/lib/store/rail";
+import { useExperience } from "@/lib/store/experience";
+import { damp, rail } from "@/lib/store/rail";
 import { RAIL_LENGTH } from "@/lib/stations";
 
 /**
@@ -34,6 +35,7 @@ const floorFragment = /* glsl */ `
   uniform vec3 uColor;
   uniform float uCameraZ;
   uniform float uSpacing;
+  uniform float uVisible;
 
   // Antialiased grid line coverage, using derivatives so distant lines fade
   // instead of aliasing into moiré.
@@ -54,11 +56,30 @@ const floorFragment = /* glsl */ `
     float dist = length(vec2(vWorld.x, vWorld.y - uCameraZ));
     float fade = 1.0 - smoothstep(6.0, 42.0, dist);
 
-    float strength = (fine + coarse) * fade;
+    float strength = (fine + coarse) * fade * uVisible;
 
     if (strength < 0.002) discard;
 
     gl_FragColor = vec4(uColor, strength);
+  }
+`;
+
+const domeVertex = /* glsl */ `
+  varying vec3 vPos;
+  void main() {
+    vPos = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const domeFragment = /* glsl */ `
+  precision highp float;
+  varying vec3 vPos;
+  void main() {
+    float h = normalize(vPos).y;
+    vec3 low = vec3(0.020, 0.027, 0.047);
+    vec3 high = vec3(0.043, 0.070, 0.133);
+    gl_FragColor = vec4(mix(low, high, smoothstep(-0.4, 0.9, h)), 1.0);
   }
 `;
 
@@ -68,14 +89,50 @@ export function Backdrop() {
       uColor: { value: new THREE.Color("#2e7cf6") },
       uCameraZ: { value: 0 },
       uSpacing: { value: 1.2 },
+      uVisible: { value: 0 },
     }),
     [],
   );
 
   const floor = useRef<THREE.Mesh>(null);
+  const phase = useExperience((s) => s.phase);
 
-  useFrame(({ camera }) => {
+  // Own the materials: see Panel.tsx for why <shaderMaterial uniforms={}>
+  // cannot be trusted to keep this object.
+  const floorMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: floorVertex,
+        fragmentShader: floorFragment,
+        uniforms,
+        transparent: true,
+        depthWrite: false,
+      }),
+    [uniforms],
+  );
+  const domeMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        vertexShader: domeVertex,
+        fragmentShader: domeFragment,
+      }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      floorMaterial.dispose();
+      domeMaterial.dispose();
+    },
+    [floorMaterial, domeMaterial],
+  );
+
+  useFrame(({ camera }, delta) => {
     uniforms.uCameraZ.value = camera.position.z;
+    // The grid is the environment; it exists only once the headset is on.
+    const worn = phase === "desk" || phase === "donning" ? 0 : 1;
+    uniforms.uVisible.value = damp(uniforms.uVisible.value, worn, 2.5, Math.min(delta, 1 / 20));
     // Keep the floor centred under the camera so a modest plane can stand in
     // for an infinite one.
     if (floor.current) floor.current.position.z = camera.position.z;
@@ -86,28 +143,7 @@ export function Backdrop() {
       {/* Gradient dome. Rendered first, never depth-tested against. */}
       <mesh position={[0, 0, -RAIL_LENGTH / 2]} renderOrder={-2}>
         <sphereGeometry args={[90, 24, 16]} />
-        <shaderMaterial
-          side={THREE.BackSide}
-          depthWrite={false}
-          vertexShader={/* glsl */ `
-            varying vec3 vPos;
-            void main() {
-              vPos = position;
-              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-          `}
-          fragmentShader={/* glsl */ `
-            precision highp float;
-            varying vec3 vPos;
-            void main() {
-              float h = normalize(vPos).y;
-              vec3 low = vec3(0.020, 0.027, 0.047);
-              vec3 high = vec3(0.043, 0.070, 0.133);
-              vec3 color = mix(low, high, smoothstep(-0.4, 0.9, h));
-              gl_FragColor = vec4(color, 1.0);
-            }
-          `}
-        />
+        <primitive object={domeMaterial} attach="material" />
       </mesh>
 
       <mesh
@@ -117,13 +153,7 @@ export function Backdrop() {
         renderOrder={-1}
       >
         <planeGeometry args={[120, 120]} />
-        <shaderMaterial
-          vertexShader={floorVertex}
-          fragmentShader={floorFragment}
-          uniforms={uniforms}
-          transparent
-          depthWrite={false}
-        />
+        <primitive object={floorMaterial} attach="material" />
       </mesh>
     </>
   );

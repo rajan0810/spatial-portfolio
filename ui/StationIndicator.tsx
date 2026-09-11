@@ -1,6 +1,6 @@
 "use client";
 
-import { useExperience } from "@/lib/store/experience";
+import { isLive, useExperience } from "@/lib/store/experience";
 import { STATIONS, stationProgress } from "@/lib/stations";
 
 /**
@@ -12,6 +12,7 @@ import { STATIONS, stationProgress } from "@/lib/stations";
  */
 export function StationIndicator() {
   const active = useExperience((s) => s.activeStation);
+  const live = useExperience((s) => isLive(s.phase));
 
   const goTo = (index: number) => {
     const max = document.documentElement.scrollHeight - window.innerHeight;
@@ -20,6 +21,8 @@ export function StationIndicator() {
       behavior: "smooth",
     });
   };
+
+  if (!live) return null;
 
   return (
     <nav

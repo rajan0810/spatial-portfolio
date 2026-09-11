@@ -3,21 +3,40 @@
 import Lenis from "lenis";
 import { useEffect } from "react";
 
+import { isLive, useExperience } from "@/lib/store/experience";
 import { rail } from "@/lib/store/rail";
-import { useExperience } from "@/lib/store/experience";
 import { STATIONS } from "@/lib/stations";
 
 /**
- * Turns native scrolling into the single input the whole experience runs on.
+ * Turns native scrolling into the single input the environment runs on.
  *
  * Writes straight into the `rail` singleton rather than React state — see the
- * note in lib/store/rail.ts. The tall spacer below gives the page something to
+ * note in lib/store/rail.ts. The tall spacer gives the page something to
  * scroll; every visible layer is fixed-position on top of it.
+ *
+ * The spacer exists only once the headset is on and set up. Until then there
+ * is nothing to scroll to, and the desk and setup steps must not be scrolled
+ * past.
  */
 export function ScrollRail() {
   const reduceMotion = useExperience((s) => s.comfort.reduceMotion);
+  const live = useExperience((s) => isLive(s.phase));
 
   useEffect(() => {
+    document.body.style.overflow = live ? "" : "hidden";
+    if (!live) {
+      window.scrollTo(0, 0);
+      rail.target = 0;
+      rail.velocity = 0;
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [live]);
+
+  useEffect(() => {
+    if (!live) return;
+
     const readProgress = () => {
       const max = document.documentElement.scrollHeight - window.innerHeight;
       return max > 0 ? window.scrollY / max : 0;
@@ -35,13 +54,7 @@ export function ScrollRail() {
       return () => window.removeEventListener("scroll", onScroll);
     }
 
-    const lenis = new Lenis({
-      duration: 1.1,
-      // Wheel only. Touch devices keep their native momentum, which feels
-      // better than anything we'd synthesise.
-      syncTouch: false,
-    });
-
+    const lenis = new Lenis({ duration: 1.1, syncTouch: false });
     lenis.on("scroll", ({ progress, velocity }: { progress: number; velocity: number }) => {
       rail.target = progress;
       rail.velocity = velocity;
@@ -58,7 +71,7 @@ export function ScrollRail() {
       cancelAnimationFrame(frame);
       lenis.destroy();
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, live]);
 
   // Pointer drives the fake head-tracking parallax. Also written outside React.
   useEffect(() => {
@@ -69,6 +82,8 @@ export function ScrollRail() {
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     return () => window.removeEventListener("pointermove", onPointerMove);
   }, []);
+
+  if (!live) return null;
 
   return (
     <div

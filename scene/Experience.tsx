@@ -1,20 +1,41 @@
 "use client";
 
-import { Canvas } from "@react-three/fiber";
+import { Canvas, events } from "@react-three/fiber";
+import type * as THREE from "three";
 
 import type { ProfileView, ProjectView } from "@/lib/data/types";
 import { STATIONS } from "@/lib/stations";
 
 import { PerfProbe } from "./PerfProbe";
 import { Rig } from "./Rig";
+import { DeskScene } from "./desk/DeskScene";
 import { Backdrop } from "./effects/Backdrop";
-import { GuardianGrid } from "./effects/GuardianGrid";
+import { Guardian } from "./effects/Guardian";
+import { LensPass } from "./effects/LensPass";
+import { FloorConfirm } from "./setup/FloorConfirm";
+import { GuardianDraw } from "./setup/GuardianDraw";
 import { BootStation } from "./stations/BootStation";
 import { HomeStation } from "./stations/HomeStation";
 import { OutroStation } from "./stations/OutroStation";
 import { ProjectStation } from "./stations/ProjectStation";
 
 const indexOf = (id: string) => STATIONS.findIndex((station) => station.id === id);
+
+/**
+ * three's raycaster ignores `visible`, so a hidden object with an onClick can
+ * still swallow every click that passes through it — the desk, once the
+ * headset is on, sat exactly between the camera and the floor. Filter hits
+ * down to objects that are visible through their whole ancestry.
+ */
+const isShown = (object: THREE.Object3D | null) => {
+  for (let o = object; o; o = o.parent) if (!o.visible) return false;
+  return true;
+};
+
+const visibleEvents: NonNullable<React.ComponentProps<typeof Canvas>["events"]> = (store) => ({
+  ...events(store),
+  filter: (hits) => hits.filter((hit) => isShown(hit.object)),
+});
 
 /**
  * The WebGL layer. Fixed behind the DOM overlay, which carries all prose.
@@ -24,7 +45,8 @@ const indexOf = (id: string) => STATIONS.findIndex((station) => station.id === i
  *    difference nobody sees on glass panels and video.
  *  - antialias is off: the panel shader antialiases its own silhouette with
  *    derivatives, so MSAA would be paying twice for the same edges.
- *  - no lights and no shadow maps anywhere. Every surface is emissive glass.
+ *  - the only light in the site is the desk lamp; the environment is all
+ *    emissive glass.
  */
 export function Experience({
   profile,
@@ -37,28 +59,28 @@ export function Experience({
 
   return (
     // z-0, NOT a negative z-index: body carries an opaque background, and a
-    // negative-z-index child paints beneath its parent's background, which hides
-    // the canvas completely.
+    // negative-z-index child paints beneath its parent's background, which
+    // hides the canvas completely.
     <div className="fixed inset-0 z-0">
       <Canvas
+        events={visibleEvents}
         dpr={[1, 1.75]}
-        gl={{
-          antialias: false,
-          powerPreference: "high-performance",
-          alpha: false,
-        }}
+        gl={{ antialias: false, powerPreference: "high-performance", alpha: false }}
         camera={{ fov: 55, near: 0.1, far: 220, position: [0, 0.15, 11] }}
       >
         <Backdrop />
-        <GuardianGrid />
+        <Guardian />
         <Rig />
         <PerfProbe />
+        <LensPass />
+
+        <DeskScene />
+        <GuardianDraw />
+        <FloorConfirm />
 
         <BootStation index={indexOf("boot")} />
         <HomeStation index={indexOf("home")} profile={profile} />
-        {featured ? (
-          <ProjectStation index={indexOf("justix")} project={featured} />
-        ) : null}
+        {featured ? <ProjectStation index={indexOf("justix")} project={featured} /> : null}
         <OutroStation index={indexOf("outro")} />
       </Canvas>
     </div>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { perf } from "@/lib/store/perf";
-import { useExperience } from "@/lib/store/experience";
+import { isLive, useExperience } from "@/lib/store/experience";
 
 /**
  * The frame-budget HUD.
@@ -24,6 +24,7 @@ import { useExperience } from "@/lib/store/experience";
  */
 export function PerfHud() {
   const visible = useExperience((s) => s.comfort.perfHud);
+  const live = useExperience((s) => isLive(s.phase));
   const [stats, setStats] = useState({ fps: 0, ms: 0, calls: 0, triangles: 0 });
 
   // Fastest frame interval observed = the display's cadence.
@@ -40,7 +41,7 @@ export function PerfHud() {
     return () => clearInterval(id);
   }, [visible]);
 
-  if (!visible) return null;
+  if (!visible || !live) return null;
 
   const target = Number.isFinite(cadence.current) ? cadence.current : 16.7;
   const refresh = Math.round(1000 / target);

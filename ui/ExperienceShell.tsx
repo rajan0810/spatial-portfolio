@@ -1,9 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { ProfileView, ProjectView } from "@/lib/data/types";
+import { useExperience } from "@/lib/store/experience";
 
 import { AchievementToast } from "./AchievementToast";
 import { BootOverlay } from "./BootOverlay";
@@ -11,28 +13,23 @@ import { ComfortMenu } from "./ComfortMenu";
 import { Overlay } from "./Overlay";
 import { PerfHud } from "./PerfHud";
 import { ScrollRail } from "./ScrollRail";
+import { SetupOverlay } from "./SetupOverlay";
 import { StationIndicator } from "./StationIndicator";
 import { Vignette } from "./Vignette";
 
 /**
- * three + R3F + drei's SDF text are ~450KB gzipped — far too much to put in the
- * initial payload. Deferring the whole scene into its own chunk keeps the first
- * load to the DOM shell, and the download happens *behind the boot overlay*,
- * which is the one moment the site has a legitimate reason to be busy.
- *
- * ssr: false because there is nothing meaningful to server-render inside a
- * canvas — the indexable copy lives in the overlay and in flat mode.
+ * three + R3F + drei's SDF text are ~450KB gzipped — far too much for the
+ * initial payload. The whole scene is a deferred chunk; the desk appears the
+ * moment it lands, so the first thing anyone sees is the headset, not a
+ * loading bar.
  */
-const Experience = dynamic(
-  () => import("@/scene/Experience").then((m) => m.Experience),
-  { ssr: false },
-);
+const Experience = dynamic(() => import("@/scene/Experience").then((m) => m.Experience), {
+  ssr: false,
+});
 
-/** Cheap one-off probe: can this browser actually run the scene? */
 function detectWebgl2() {
   try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2"));
+    return Boolean(document.createElement("canvas").getContext("webgl2"));
   } catch {
     return false;
   }
@@ -41,10 +38,10 @@ function detectWebgl2() {
 /**
  * Composes the experience and owns the downgrade decision.
  *
- * If WebGL2 is unavailable we never mount the canvas at all — a portfolio that
- * renders a black rectangle is worse than one that renders as a document. Flat
- * mode is a genuine equal, so sending someone there is a real answer rather
- * than an apology.
+ * If WebGL2 is unavailable we never mount the canvas — a portfolio that
+ * renders a black rectangle is worse than one that renders as a document.
+ * Flat mode is a genuine equal, so sending someone there is an answer, not
+ * an apology.
  */
 export function ExperienceShell({
   profile,
@@ -54,12 +51,31 @@ export function ExperienceShell({
   projects: ProjectView[];
 }) {
   const [supported, setSupported] = useState<boolean | null>(null);
+  const phase = useExperience((s) => s.phase);
+  const setPhase = useExperience((s) => s.setPhase);
+  const setComfort = useExperience((s) => s.setComfort);
+  const router = useRouter();
 
   useEffect(() => {
     setSupported(detectWebgl2());
     document.body.classList.add("experience");
+
+    // The lens pass is a full extra fragment pass; on a phone's GPU at 3x dpr
+    // that is the difference between holding refresh and not.
+    if (window.matchMedia("(pointer: coarse)").matches) setComfort({ lens: false });
+
+    // Every visit starts at the desk. Setup is remembered; putting it on is not.
+    setPhase("desk");
+
     return () => document.body.classList.remove("experience");
-  }, []);
+  }, [setComfort, setPhase]);
+
+  // Taking the headset off: the lenses close, then flat mode.
+  useEffect(() => {
+    if (phase !== "doffing") return;
+    const id = window.setTimeout(() => router.push("/flat"), 900);
+    return () => window.clearTimeout(id);
+  }, [phase, router]);
 
   if (supported === false) {
     return (
@@ -87,11 +103,11 @@ export function ExperienceShell({
         Skip the experience — open flat mode
       </a>
 
-      {/* Held back until the probe resolves, so we never flash a dead canvas. */}
       {supported ? (
         <>
           <Experience profile={profile} projects={projects} />
           <Overlay profile={profile} projects={projects} />
+          <SetupOverlay />
           <Vignette />
           <StationIndicator />
           <ComfortMenu />

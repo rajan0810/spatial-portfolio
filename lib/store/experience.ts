@@ -6,6 +6,32 @@ import { persist } from "zustand/middleware";
  * lib/store/rail.ts, not here.
  */
 
+/**
+ * The arc of a visit, played completely straight:
+ *
+ *   desk      a headset resting on a desk. Pick it up.
+ *   donning   it rises to meet your eyes; the screen goes dark
+ *   boot      the headset starts
+ *   guardian  first-time setup: draw your boundary on the floor
+ *   floor     first-time setup: confirm floor level
+ *   live      the environment; scroll is unlocked
+ *   doffing   taking it off — on the way to flat mode
+ *
+ * A returning visitor with a saved guardian skips both setup steps, exactly
+ * as a headset that has already been set up would.
+ */
+export type Phase =
+  | "desk"
+  | "donning"
+  | "boot"
+  | "guardian"
+  | "floor"
+  | "live"
+  | "doffing";
+
+/** A boundary polygon on the floor, in viewer-local metres: [x, z] pairs. */
+export type GuardianPolygon = [number, number][];
+
 export type ComfortSettings = {
   /** Collapses camera travel and parallax. Mirrors prefers-reduced-motion. */
   reduceMotion: boolean;
@@ -13,6 +39,10 @@ export type ComfortSettings = {
   vignette: boolean;
   /** Snap between stations instead of gliding. */
   snapTransitions: boolean;
+  /** Full-screen lens pass: barrel distortion, chromatic fringe, lens vignette. */
+  lens: boolean;
+  /** The faint subpixel grid every headset owner knows. Rides on the lens pass. */
+  screenDoor: boolean;
   audio: boolean;
   /** fps / frame-time overlay. On by default: it is part of the argument. */
   perfHud: boolean;
@@ -22,8 +52,12 @@ type ExperienceState = {
   comfort: ComfortSettings;
   setComfort: (patch: Partial<ComfortSettings>) => void;
 
-  booted: boolean;
-  setBooted: (booted: boolean) => void;
+  phase: Phase;
+  setPhase: (phase: Phase) => void;
+
+  /** Saved boundary. Null until drawn; a default shape is used when skipped. */
+  guardian: GuardianPolygon | null;
+  setGuardian: (polygon: GuardianPolygon | null) => void;
 
   comfortMenuOpen: boolean;
   toggleComfortMenu: () => void;
@@ -41,6 +75,8 @@ const DEFAULT_COMFORT: ComfortSettings = {
   reduceMotion: false,
   vignette: true,
   snapTransitions: false,
+  lens: true,
+  screenDoor: true,
   audio: false, // Opt-in. Autoplaying audio is hostile, and browsers block it anyway.
   perfHud: true,
 };
@@ -52,8 +88,13 @@ export const useExperience = create<ExperienceState>()(
       setComfort: (patch) =>
         set((state) => ({ comfort: { ...state.comfort, ...patch } })),
 
-      booted: false,
-      setBooted: (booted) => set({ booted }),
+      phase: "desk",
+      setPhase: (phase) => {
+        if (get().phase !== phase) set({ phase });
+      },
+
+      guardian: null,
+      setGuardian: (guardian) => set({ guardian }),
 
       comfortMenuOpen: false,
       toggleComfortMenu: () =>
@@ -61,8 +102,8 @@ export const useExperience = create<ExperienceState>()(
 
       activeStation: 0,
       setActiveStation: (index) => {
-        // Guard: setActiveStation is called from the render loop, so bail out
-        // before touching the store when nothing actually changed.
+        // Called from the render loop: bail before touching the store when
+        // nothing actually changed.
         if (get().activeStation !== index) set({ activeStation: index });
       },
 
@@ -75,10 +116,14 @@ export const useExperience = create<ExperienceState>()(
         ),
     }),
     {
-      name: "rh-comfort",
-      // Only comfort settings persist. Boot state and achievement toasts should
-      // replay for each visit — that is the experience.
-      partialize: (state) => ({ comfort: state.comfort }),
+      name: "rh-headset",
+      // Comfort settings and the drawn guardian persist — a headset remembers
+      // its setup. Phase and achievement toasts replay for each visit; that
+      // arc is the experience.
+      partialize: (state) => ({ comfort: state.comfort, guardian: state.guardian }),
     },
   ),
 );
+
+/** Whether scroll and the station overlay should be active. */
+export const isLive = (phase: Phase) => phase === "live" || phase === "doffing";

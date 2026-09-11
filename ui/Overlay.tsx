@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 import type { ProfileView, ProjectView } from "@/lib/data/types";
+import { isLive, useExperience } from "@/lib/store/experience";
 import { rail } from "@/lib/store/rail";
 import { STATIONS, stationWeight } from "@/lib/stations";
 
@@ -30,6 +31,7 @@ export function Overlay({
   projects: ProjectView[];
 }) {
   const refs = useRef<(HTMLElement | null)[]>([]);
+  const live = useExperience((s) => isLive(s.phase));
 
   useEffect(() => {
     let frame = 0;
@@ -39,7 +41,7 @@ export function Overlay({
         const el = refs.current[i];
         if (!el) continue;
 
-        const weight = stationWeight(rail.progress, i, 0.62);
+        const weight = stationWeight(rail.progress, i, 0.48);
         el.style.opacity = weight.toFixed(3);
         el.style.transform = `translate3d(0, ${((1 - weight) * 26).toFixed(1)}px, 0)`;
 
@@ -61,6 +63,10 @@ export function Overlay({
   }, []);
 
   const featured = projects[0];
+
+  // Prose belongs to the environment. On the desk and during setup, the
+  // SetupOverlay owns the screen instead.
+  if (!live) return null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-10">

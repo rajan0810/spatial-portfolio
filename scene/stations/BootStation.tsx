@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import * as THREE from "three";
 
+import { useExperience } from "@/lib/store/experience";
 import { rail } from "@/lib/store/rail";
 import { STATIONS, stationWeight } from "@/lib/stations";
 
@@ -22,10 +23,14 @@ const SEGMENTS = 16;
 export function BootStation({ index }: { index: number }) {
   const ring = useRef<THREE.Group>(null);
   const z = STATIONS[index].z;
+  const phase = useExperience((s) => s.phase);
+  // The ring belongs to the headset, not the desk it is sitting on.
+  const worn = phase !== "desk" && phase !== "donning";
 
   useFrame(({ clock }) => {
     if (!ring.current) return;
-    const weight = stationWeight(rail.progress, index, 1.1);
+    ring.current.visible = worn;
+    const weight = stationWeight(rail.progress, index, 0.8);
     // Spins fast during boot, settling to a drift as you scroll away.
     ring.current.rotation.z = clock.elapsedTime * (0.35 + weight * 0.9);
   });

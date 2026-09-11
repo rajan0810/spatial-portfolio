@@ -28,7 +28,7 @@ export function StationGroup({
   useFrame((_, delta) => {
     if (!group.current) return;
 
-    const weight = stationWeight(rail.progress, index, 0.9);
+    const weight = stationWeight(rail.progress, index, 0.62);
     shown.current = damp(shown.current, weight, 8, Math.min(delta, 1 / 20));
 
     const visible = shown.current > 0.004;
@@ -54,7 +54,7 @@ export function stationFade(index: number, scale = 1) {
     _elapsed: number,
     delta: number,
   ) => {
-    const weight = stationWeight(rail.progress, index, 0.9) * scale;
+    const weight = stationWeight(rail.progress, index, 0.62) * scale;
     uniforms.uOpacity.value = damp(
       uniforms.uOpacity.value,
       weight,

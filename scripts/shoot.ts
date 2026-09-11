@@ -1,11 +1,11 @@
 /**
  * Drives the running dev server in a real browser, captures console output, and
- * screenshots each station along the rail.
+ * screenshots the whole arc: desk → headset on → boot → guardian → floor →
+ * each station.
  *
  * A scroll-driven WebGL scene cannot be verified by a passing build: shader
- * compile failures, texture CORS rejections and NaN transforms all show up only
- * at runtime, in a browser. Uses the locally installed Chrome via playwright-core
- * so no browser download is needed.
+ * compile failures, texture CORS rejections and z-index mistakes show up only
+ * at runtime, in a browser. Uses locally installed Chrome via playwright-core.
  *
  *   npx tsx scripts/shoot.ts [outDir] [baseUrl]
  */
@@ -15,7 +15,6 @@ import { chromium } from "playwright-core";
 
 const OUT = process.argv[2] ?? ".shots";
 const BASE = process.argv[3] ?? "http://localhost:3000";
-
 const STATIONS = ["boot", "home", "justix", "outro"];
 
 async function main() {
@@ -23,73 +22,82 @@ async function main() {
 
   const browser = await chromium.launch({
     channel: "chrome",
-    args: [
-      // Force real GPU-backed WebGL in headless rather than falling back to a
-      // software path that would not tell us whether shaders actually compile.
-      "--use-gl=angle",
-      "--use-angle=default",
-      "--enable-unsafe-swiftshader",
-      "--ignore-gpu-blocklist",
-    ],
+    args: ["--use-gl=angle", "--use-angle=default", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
   });
-
-  const page = await browser.newPage({
-    viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 2,
-  });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
 
   const problems: string[] = [];
-
   page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.type() === "warning") {
-      problems.push(`[${msg.type()}] ${msg.text()}`);
-    }
+    if (msg.type() === "error" || msg.type() === "warning") problems.push(`[${msg.type()}] ${msg.text()}`);
   });
   page.on("pageerror", (err) => problems.push(`[pageerror] ${err.message}`));
-  page.on("requestfailed", (req) =>
-    problems.push(`[requestfailed] ${req.url()} — ${req.failure()?.errorText}`),
-  );
+  page.on("requestfailed", (req) => problems.push(`[requestfailed] ${req.url()} — ${req.failure()?.errorText}`));
 
-  // networkidle never settles in dev: the HMR socket stays open. Wait for the
-  // canvas to actually exist instead, which is the thing we care about.
+  // A fresh visitor: no remembered guardian.
+  await page.addInitScript(() => localStorage.clear());
+
+  // networkidle never settles in dev (HMR socket); wait for the canvas instead.
   await page.goto(BASE, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("canvas", { timeout: 45_000 });
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: `${OUT}/a-desk.png` });
+  console.log("✓ desk");
 
-  // Let the boot overlay run, then skip it the way a visitor would.
-  await page.waitForTimeout(2600);
-  await page.keyboard.press("Space");
+  // Put it on, via the accessible button.
+  await page.getByRole("button", { name: "Put on the headset" }).click();
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${OUT}/b-donning.png` });
+  console.log("✓ donning");
+
+  // Boot runs; skip it as a visitor would.
+  await page.waitForSelector('[aria-label="Starting the headset"]', { timeout: 10_000 });
   await page.waitForTimeout(900);
+  await page.screenshot({ path: `${OUT}/c-boot.png` });
+  await page.keyboard.press("Space");
+  console.log("✓ boot");
 
-  const height = await page.evaluate(
-    () => document.documentElement.scrollHeight - window.innerHeight,
-  );
+  // Guardian: trace a loop on the floor with the mouse.
+  await page.getByText("Draw your Guardian").waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(600);
+  const cx = 720;
+  const cy = 690;
+  await page.mouse.move(cx - 260, cy);
+  await page.mouse.down();
+  for (let i = 1; i <= 40; i += 1) {
+    const a = (i / 40) * Math.PI * 2;
+    await page.mouse.move(cx - 260 * Math.cos(a), cy + 90 * Math.sin(a), { steps: 2 });
+  }
+  await page.screenshot({ path: `${OUT}/d-guardian.png` });
+  await page.mouse.up();
+  console.log("✓ guardian");
 
+  // Floor: touch it.
+  await page.getByText("Confirm floor level").waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${OUT}/e-floor.png` });
+  await page.mouse.click(260, 720);
+  await page.waitForTimeout(1200);
+  console.log("✓ floor");
+
+  // Live: walk the rail.
+  const height = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
   for (let i = 0; i < STATIONS.length; i += 1) {
-    const top = (i / (STATIONS.length - 1)) * height;
-    await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), top);
-    // Wait out the damping so the shot shows the settled frame.
+    await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), (i / (STATIONS.length - 1)) * height);
     await page.waitForTimeout(1500);
     await page.screenshot({ path: `${OUT}/${i}-${STATIONS[i]}.png` });
     console.log(`✓ ${STATIONS[i]}`);
   }
 
-  // Report the perf singleton — the HUD's own numbers, read directly.
-  const stats = await page.evaluate(() => {
-    const w = window as unknown as { __perf?: unknown };
-    return w.__perf ?? null;
-  });
-  if (stats) console.log("perf:", stats);
+  // Mid-transition: the guardian walls you drew should be showing.
+  await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), height * 0.5);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: `${OUT}/f-between.png` });
+  console.log("✓ between stations");
 
-  // Flat mode, for comparison.
   await page.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(800);
-  await page.screenshot({ path: `${OUT}/4-flat.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/g-flat.png`, fullPage: true });
   console.log("✓ flat");
-
-  await page.goto(`${BASE}/flat/projects/justix`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(800);
-  await page.screenshot({ path: `${OUT}/5-flat-justix.png`, fullPage: true });
-  console.log("✓ flat/justix");
 
   await browser.close();
 
