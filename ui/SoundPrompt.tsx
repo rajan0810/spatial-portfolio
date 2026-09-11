@@ -48,7 +48,7 @@ export function SoundPrompt() {
     <div
       role="dialog"
       aria-label="Sound"
-      className="panel fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 px-3 py-2"
+      className="panel absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 px-3 py-2"
       style={{ animation: "toast-in 320ms var(--ease-panel)" }}
     >
       <span className="pl-1 text-sm text-ink-dim">Sound?</span>

@@ -15,8 +15,10 @@ const BASE = process.argv[2] ?? "http://localhost:3000";
 const results: { name: string; pass: boolean; detail: string }[] = [];
 const check = (name: string, pass: boolean, detail: string) => results.push({ name, pass, detail });
 
-/** Keyboard-only path from the desk to the live environment. */
+/** Keyboard-only path from the editor, through the desk, to the live environment. */
 async function wearByKeyboard(page: Page) {
+  await page.keyboard.press("Meta+p");
+  await page.getByRole("button", { name: "Put on the headset" }).waitFor({ timeout: 10_000 });
   await page.getByRole("button", { name: "Put on the headset" }).focus();
   await page.keyboard.press("Enter");
   // Boot may be skipped entirely under reduced motion.
@@ -41,6 +43,7 @@ async function main() {
     await page.waitForSelector("canvas", { timeout: 45_000 });
     await page.waitForTimeout(1200);
 
+    await page.getByRole("button", { name: "Play", exact: true }).click();
     await page.getByRole("button", { name: "Put on the headset" }).click();
     await page.waitForTimeout(900);
     const bootShown = await page.locator('[aria-label="Starting the headset"]').count();
@@ -64,6 +67,12 @@ async function main() {
     await page.keyboard.press("Tab");
     const firstFocus = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
     check("skip link is the first tab stop", firstFocus.toLowerCase().includes("flat mode"), `first focus: "${firstFocus}"`);
+
+    // The editor itself: hierarchy is a real tree, inspector shows the selection.
+    const treeItems = await page.locator('[role="treeitem"]').count();
+    check("hierarchy renders the scene tree", treeItems >= 6, `${treeItems} tree items`);
+    const inspectorTitle = await page.locator(".ed-inspector__name").first().textContent();
+    check("inspector shows the selected project", (inspectorTitle ?? "").includes("JustiX"), `inspector: "${inspectorTitle}"`);
 
     await wearByKeyboard(page);
     await page.waitForTimeout(1500);
@@ -90,6 +99,7 @@ async function main() {
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("canvas", { timeout: 45_000 });
     await page.waitForTimeout(1200);
+    await page.getByRole("button", { name: "Play", exact: true }).click();
     await page.getByRole("button", { name: "Put on the headset" }).click();
     await page.waitForSelector('[aria-label="Starting the headset"]', { timeout: 10_000 });
     await page.keyboard.press("Space");

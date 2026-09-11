@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
+import { useEditor } from "@/lib/store/editor";
 import { useExperience } from "@/lib/store/experience";
 import { damp } from "@/lib/store/rail";
 import { RAIL_LENGTH } from "@/lib/stations";
@@ -92,6 +93,7 @@ const domeFragment = /* glsl */ `
 
 export function Backdrop() {
   const phase = useExperience((s) => s.phase);
+  const editing = useEditor((s) => s.mode === "edit");
   const floor = useRef<THREE.Mesh>(null);
   const mood = useMemo(makeMood, []);
   const dim = useMemo(() => new THREE.Color(), []);
@@ -152,7 +154,7 @@ export function Backdrop() {
     const k = 1 - Math.exp(-3 * dt);
     currentMood(mood);
 
-    const worn = phase === "desk" || phase === "donning" ? 0 : 1;
+    const worn = editing || !(phase === "desk" || phase === "donning") ? 1 : 0;
 
     floorUniforms.uCameraZ.value = camera.position.z;
     floorUniforms.uColor.value.copy(mood.accent);

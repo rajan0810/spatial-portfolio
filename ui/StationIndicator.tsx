@@ -1,6 +1,8 @@
 "use client";
 
+import { useEditor } from "@/lib/store/editor";
 import { isLive, useExperience } from "@/lib/store/experience";
+import { rail } from "@/lib/store/rail";
 import { STATIONS, stationProgress } from "@/lib/stations";
 
 /**
@@ -13,21 +15,24 @@ import { STATIONS, stationProgress } from "@/lib/stations";
 export function StationIndicator() {
   const active = useExperience((s) => s.activeStation);
   const live = useExperience((s) => isLive(s.phase));
+  const editing = useEditor((s) => s.mode === "edit");
 
   const goTo = (index: number) => {
+    if (editing) {
+      // No page to scroll in the editor: drive the rail directly.
+      rail.target = stationProgress(index);
+      return;
+    }
     const max = document.documentElement.scrollHeight - window.innerHeight;
-    window.scrollTo({
-      top: stationProgress(index) * max,
-      behavior: "smooth",
-    });
+    window.scrollTo({ top: stationProgress(index) * max, behavior: "smooth" });
   };
 
-  if (!live) return null;
+  if (!live && !editing) return null;
 
   return (
     <nav
       aria-label="Stations"
-      className="fixed top-1/2 right-4 z-30 hidden -translate-y-1/2 flex-col items-end gap-3 sm:flex"
+      className="absolute top-1/2 right-4 z-30 hidden -translate-y-1/2 flex-col items-end gap-3 sm:flex"
     >
       {STATIONS.map((station, index) => {
         const current = index === active;

@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import * as THREE from "three";
 
+import { useEditor } from "@/lib/store/editor";
 import { useExperience } from "@/lib/store/experience";
 import { rail } from "@/lib/store/rail";
 import { STATIONS, stationWeight } from "@/lib/stations";
@@ -25,7 +26,8 @@ export function BootStation({ index }: { index: number }) {
   const z = STATIONS[index].z;
   const phase = useExperience((s) => s.phase);
   // The ring belongs to the headset, not the desk it is sitting on.
-  const worn = phase !== "desk" && phase !== "donning";
+  const editing = useEditor((s) => s.mode === "edit");
+  const worn = editing || (phase !== "desk" && phase !== "donning");
 
   useFrame(({ clock }) => {
     if (!ring.current) return;

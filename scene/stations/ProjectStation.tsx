@@ -5,7 +5,9 @@ import { useFrame } from "@react-three/fiber";
 import { useRef } from "react";
 import * as THREE from "three";
 
+import { withOverrides } from "@/lib/data/overrides";
 import type { ProjectView } from "@/lib/data/types";
+import { useEditor } from "@/lib/store/editor";
 import { damp, rail } from "@/lib/store/rail";
 import { STATIONS, stationWeight } from "@/lib/stations";
 
@@ -27,11 +29,14 @@ import { StationGroup, stationFade } from "./StationGroup";
  */
 export function ProjectStation({
   index,
-  project,
+  project: base,
 }: {
   index: number;
   project: ProjectView;
 }) {
+  // Inspector edits show here live: rename a surface, the label changes.
+  const overrides = useEditor((s) => s.overrides[`project:${base.slug}`]);
+  const project = withOverrides(base, overrides);
   const z = STATIONS[index].z;
   const [, ...wings] = project.tech;
 

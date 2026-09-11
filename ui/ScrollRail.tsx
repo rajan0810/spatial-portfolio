@@ -2,6 +2,9 @@
 
 import Lenis from "lenis";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
+
+import { useEditor } from "@/lib/store/editor";
 
 import { isLive, useExperience } from "@/lib/store/experience";
 import { rail } from "@/lib/store/rail";
@@ -20,10 +23,13 @@ import { STATIONS } from "@/lib/stations";
  */
 export function ScrollRail() {
   const reduceMotion = useExperience((s) => s.comfort.reduceMotion);
-  const live = useExperience((s) => isLive(s.phase));
+  const playing = useEditor((s) => s.mode === "play");
+  const live = useExperience((s) => isLive(s.phase)) && playing;
 
   useEffect(() => {
-    document.body.style.overflow = live ? "" : "hidden";
+    // The editor root is fixed and body is overflow:hidden; the game needs a
+    // real scrollable page, so lift that explicitly while live.
+    document.body.style.overflow = live ? "auto" : "hidden";
     if (!live) {
       window.scrollTo(0, 0);
       rail.target = 0;
@@ -98,11 +104,9 @@ export function ScrollRail() {
 
   if (!live) return null;
 
-  return (
-    <div
-      aria-hidden
-      style={{ height: `${STATIONS.length * 100}vh` }}
-      className="pointer-events-none w-full"
-    />
+  // In flow on the body, not inside the fixed viewport, or nothing scrolls.
+  return createPortal(
+    <div aria-hidden style={{ height: `${STATIONS.length * 100}vh` }} className="pointer-events-none w-full" />,
+    document.body,
   );
 }

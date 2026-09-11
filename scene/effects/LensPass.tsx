@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 
+import { useEditor } from "@/lib/store/editor";
 import { useExperience } from "@/lib/store/experience";
 import { damp } from "@/lib/store/rail";
 
@@ -86,9 +87,13 @@ const fragmentShader = /* glsl */ `
 
 export function LensPass() {
   const { size, viewport } = useThree();
-  const lens = useExperience((s) => s.comfort.lens);
+  const lensSetting = useExperience((s) => s.comfort.lens);
   const screenDoor = useExperience((s) => s.comfort.screenDoor);
   const phase = useExperience((s) => s.phase);
+  const playing = useEditor((s) => s.mode === "play");
+  // This component owns rendering whenever it is mounted (see the priority
+  // below), so it is mounted always; the lens itself is a Play-mode thing.
+  const lens = lensSetting && playing;
 
   const fbo = useFBO({ depthBuffer: true, stencilBuffer: false });
 
@@ -140,7 +145,7 @@ export function LensPass() {
 
     // On the desk you see with your own eyes. The lens arrives with the
     // headset and leaves with it.
-    const worn = phase === "desk" || phase === "doffing" ? 0 : 1;
+    const worn = playing && !(phase === "desk" || phase === "doffing") ? 1 : 0;
     uniforms.uWear.value = damp(uniforms.uWear.value, worn, 2.2, dt);
 
     if (!lens) {

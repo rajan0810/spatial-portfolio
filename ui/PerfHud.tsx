@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { perf } from "@/lib/store/perf";
+import { useEditor } from "@/lib/store/editor";
 import { isLive, useExperience } from "@/lib/store/experience";
 
 /**
@@ -25,6 +26,7 @@ import { isLive, useExperience } from "@/lib/store/experience";
 export function PerfHud() {
   const visible = useExperience((s) => s.comfort.perfHud);
   const live = useExperience((s) => isLive(s.phase));
+  const editing = useEditor((s) => s.mode === "edit");
   const [stats, setStats] = useState({ fps: 0, ms: 0, calls: 0, triangles: 0 });
 
   // Fastest frame interval observed = the display's cadence.
@@ -41,7 +43,7 @@ export function PerfHud() {
     return () => clearInterval(id);
   }, [visible]);
 
-  if (!visible || !live) return null;
+  if (!visible || (!live && !editing)) return null;
 
   const target = Number.isFinite(cadence.current) ? cadence.current : 16.7;
   const refresh = Math.round(1000 / target);
@@ -50,7 +52,7 @@ export function PerfHud() {
 
   return (
     <div
-      className="panel pointer-events-none fixed bottom-4 left-4 z-30 px-3 py-2 font-mono text-[10px] leading-relaxed tracking-wider tabular-nums"
+      className="panel pointer-events-none absolute bottom-4 left-4 z-30 px-3 py-2 font-mono text-[10px] leading-relaxed tracking-wider tabular-nums"
       // Live region deliberately off: a screen reader announcing fps five times
       // a second would be unusable.
       aria-hidden

@@ -61,7 +61,7 @@ export function ComfortMenu() {
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="panel fixed top-4 right-4 z-30 px-3 py-2 font-mono text-[11px] tracking-widest text-ink-dim uppercase transition-colors hover:text-ink"
+        className="panel absolute top-4 right-4 z-30 px-3 py-2 font-mono text-[11px] tracking-widest text-ink-dim uppercase transition-colors hover:text-ink"
       >
         Settings
       </button>
@@ -70,7 +70,7 @@ export function ComfortMenu() {
         <div
           role="dialog"
           aria-label="Headset settings"
-          className="panel fixed top-16 right-4 z-30 w-[min(20rem,88vw)] p-4"
+          className="panel absolute top-16 right-4 z-30 w-[min(20rem,88vw)] p-4"
         >
           <p className="px-2 pb-2 font-mono text-[10px] tracking-[0.25em] text-ink-faint uppercase">
             Comfort

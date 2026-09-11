@@ -1,37 +1,32 @@
 # Spatial Portfolio
 
-A portfolio that behaves like the thing it is about. The work is VR on Meta Quest, so you don't visit
-this site — **you put on a headset.**
+A portfolio that behaves like the thing it is about. The work is VR on Meta Quest, built in a game
+engine every day — so the site **opens as the editor, with one scene loaded: Rajan.**
 
-The page opens on a desk. A headset rests on it under a lamp. You pick it up; it rises to meet your
-eyes and the screen goes dark. It boots. Because it has never been worn, it sets itself up — a
-completely straight-faced replay of first-time headset setup, except every step is real: you **draw
-your Guardian** by tracing a boundary on the floor, and that polygon becomes the actual boundary that
-appears around you whenever you cross between stations. You confirm floor level by touching the
-floor. Then you are in the environment, and everything you see is seen *through the lenses* — barrel
-distortion, chromatic fringing at the edges, and the faint screen-door grid every headset owner has
-learned to stop noticing. Taking the headset off is flat mode.
+- **Hierarchy** is the site map: `Rajan (Player)`, `Projects/JustiX`, `Skills`, `Achievements`,
+  `Timeline`, `Contact`. Click to select; double-click or `F` to frame.
+- **Scene view** is the live 3D world under a free-orbit camera, with an orange selection outline
+  and a **move gizmo you can drag**. The **Game** tab shows exactly what a player sees.
+- **Inspector** shows the selection's components — `Transform`, `Project (Script)`, `Tech`,
+  `Highlights`, `Demo (VideoPlayer)`, `Links`. **Fields are live-bound**: rename a tech surface and
+  the label on the 3D panel changes. Nothing is saved; the asterisk in the title bar and **Revert**
+  are the whole persistence story, as they should be for an editor with no Save.
+- **Console** logs selection, transforms, play/stop and every achievement unlocked in the game.
+- **▶ Play** runs the scene as the game: a headset on a desk. Pick it up; it boots; draw your
+  Guardian; confirm the floor; you are in the environment, through the lenses, with a tracked hand
+  for a cursor and panels you can grab and throw. **■ Stop** returns to the editor with the scene
+  where you left it. **⏸** halts the render loop for real; **⏭** advances exactly one frame.
+  `⌘P` toggles. **Build** is flat mode.
 
-A returning visitor's headset remembers its setup, exactly as a real one would.
-
-Inside, it behaves like a place. **Your cursor is a tracked hand** — open at rest, pointing over
-anything interactive, pinching when you press, with the ray appearing as it does on the headset.
-**Panels can be grabbed and thrown**: drag one off its mount, let go with velocity, and it flies and
-springs home. **Each station has its own weather** — indigo dawn at home, courtroom amber at JustiX,
-violet night at the end — carried by the sky, the floor grid and the dust drifting in the air.
-**Every sound is synthesised in WebAudio**, no files: hover ticks, pinch clicks, a whoosh on a
-throw, a chime for an achievement, a room tone. Opt-in, asked once. Until a real demo loop exists,
-the JustiX screen shows **a live procedural courtroom** — bench, lecterns, a human figure facing an
-adversarial AI, a gavel now and then — rendered to texture inside the panel.
+A recruiter gets the inspector — a structured résumé denser than any flat page. A developer gets the
+joke instantly and starts poking. Both get the same data, from one access layer.
 
 Two front-ends over one content source:
 
 | | |
 |---|---|
-| **`/`** — the Experience | Desk → put on → boot → draw your Guardian → confirm floor → a WebGL environment on a scroll-driven camera rail, rendered through a lens pass. Curved glass panels, comfort menu, live frame-budget HUD. |
-| **`/flat`** — Flat mode | The same content, server-rendered, **zero WebGL**. What a recruiter with forty seconds reads, what Google indexes, and the fallback for low-power devices and reduced-motion. |
-
-Flat mode is not a consolation prize. The experience is the argument; flat mode is the evidence.
+| **`/`** — the Editor | Hierarchy · Scene/Game view · Inspector · Console · ▶ Play. |
+| **`/flat`** — Flat mode ("Build") | The same content, server-rendered, **zero WebGL**. What Google indexes, and the fallback for low-power devices and reduced-motion. |
 
 ## Architecture
 
@@ -50,13 +45,22 @@ than the entire 3D scene.
 consume it. That is what stops the two modes from drifting into different sites.
 
 ```
-app/            routes — experience, flat mode, per-project case studies
-scene/          WebGL: Rig (camera on rail), panels/, stations/, effects/
-ui/             DOM overlay: prose, comfort menu, perf HUD, achievement toasts
+app/            routes — the editor, flat mode, per-project case studies
+ui/editor/      EditorShell, TopBar, Hierarchy, Inspector, Console, Viewport
+scene/          WebGL: EditorCamera, Selection (gizmo), Rig (rail camera), PauseLoop,
+                panels/, stations/, effects/, desk/, setup/, input/, preview/
+ui/             the game's DOM layer: prose, setup, comfort, HUD, toasts, sound
+lib/store/      editor (mode, selection, overrides, console) · experience (phases,
+                comfort, guardian) · rail/hand/perf (per-frame singletons) · sceneRegistry
 lib/data/       cached, tagged content reads   <-- both modes read only this
 lib/db/         Drizzle schema + RLS policies
 scripts/        migrate, seed, screenshot, verify
 ```
+
+**The render loop is owned by one component.** Any `useFrame` with a positive priority switches off
+R3F's automatic render. `LensPass` is therefore always mounted and is *the* renderer — drawing
+through the lens in Play and straight to the screen otherwise. Forgetting this produces a black
+viewport whose HUD still reports draw calls (from the courtroom's offscreen render).
 
 `scene/panels/Panel.tsx` is the load-bearing abstraction — nearly every visual in the scene is one
 curved, rounded, edge-lit panel, drawn in a single pass by one shader.
@@ -106,9 +110,9 @@ lock is a Supabase Auth session enforced in middleware.
 
 Enforced, not aspirational — a VR developer's portfolio dropping frames undercuts the whole argument.
 
-- Initial JS ≤ 300KB gzipped. Currently **185KB** for the experience, **173KB** for flat mode.
-- three + R3F + SDF text + the scene (~287KB gz) is a deferred chunk that arrives while you look at
-  the desk. Audio adds nothing: it is synthesised.
+- Initial JS ≤ 300KB gzipped. Currently **194KB** for the editor, **173KB** for flat mode.
+- three + R3F + drei + the scene (~299KB gz) is a deferred chunk that arrives into the viewport
+  while the editor chrome is already interactive. Audio adds nothing: it is synthesised.
 - Flat mode ships zero WebGL, verified against the built output.
 - One light in the whole site — the desk lamp — and it unmounts with the desk. The environment is
   all emissive glass; no shadow maps anywhere.
@@ -134,7 +138,7 @@ npm run dev
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run db:policies` | Apply RLS, grants and triggers (idempotent) |
 | `npm run db:seed` | Seed profile + projects |
-| `npm run shoot` | Screenshot every station in a real browser |
+| `npm run shoot` | Screenshot the editor, then Play through the whole arc, in a real browser |
 | `npm run verify` | Assert reduced-motion, inert, mobile and flat-mode guarantees |
 
 `shoot` and `verify` drive the running dev server through locally installed Chrome. They exist

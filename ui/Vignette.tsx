@@ -40,7 +40,7 @@ export function Vignette() {
     <div
       ref={ref}
       aria-hidden
-      className="pointer-events-none fixed inset-0 z-20"
+      className="pointer-events-none absolute inset-0 z-20"
       style={{
         opacity: 0,
         background:

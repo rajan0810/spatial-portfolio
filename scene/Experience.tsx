@@ -4,10 +4,14 @@ import { Canvas, events } from "@react-three/fiber";
 import type * as THREE from "three";
 
 import type { ProfileView, ProjectView } from "@/lib/data/types";
+import { useEditor } from "@/lib/store/editor";
 import { STATIONS } from "@/lib/stations";
 
+import { EditorCamera } from "./EditorCamera";
+import { PauseLoop } from "./PauseLoop";
 import { PerfProbe } from "./PerfProbe";
 import { Rig } from "./Rig";
+import { Selection } from "./Selection";
 import { DeskScene } from "./desk/DeskScene";
 import { Backdrop } from "./effects/Backdrop";
 import { Guardian } from "./effects/Guardian";
@@ -25,9 +29,8 @@ const indexOf = (id: string) => STATIONS.findIndex((station) => station.id === i
 
 /**
  * three's raycaster ignores `visible`, so a hidden object with an onClick can
- * still swallow every click that passes through it — the desk, once the
- * headset is on, sat exactly between the camera and the floor. Filter hits
- * down to objects that are visible through their whole ancestry.
+ * still swallow every click that passes through it. Filter hits down to
+ * objects that are visible through their whole ancestry.
  */
 const isShown = (object: THREE.Object3D | null) => {
   for (let o = object; o; o = o.parent) if (!o.visible) return false;
@@ -40,47 +43,60 @@ const visibleEvents: NonNullable<React.ComponentProps<typeof Canvas>["events"]> 
 });
 
 /**
- * The WebGL layer. Fixed behind the DOM overlay, which carries all prose.
+ * The WebGL layer, filling whatever element it is placed in: the editor's
+ * scene view, or the whole screen in Play.
  *
- * Frame-budget choices worth keeping:
- *  - dpr is capped at 1.75. A 3x retina buffer triples fragment cost for a
- *    difference nobody sees on glass panels and video.
- *  - antialias is off: the panel shader antialiases its own silhouette with
- *    derivatives, so MSAA would be paying twice for the same edges.
- *  - the only light in the site is the desk lamp; the environment is all
- *    emissive glass.
+ * One scene, two ways of looking at it. In edit mode the editor camera orbits
+ * it with the selection outlined; in the Game tab and in Play the rail camera
+ * drives, with the lens, the hand and the guardian only in Play.
+ *
+ * Frame-budget choices worth keeping: dpr capped at 1.75; MSAA off (the panel
+ * shader antialiases its own edges); the only light is the desk lamp.
  */
-export function Experience({
-  profile,
-  projects,
-}: {
-  profile: ProfileView;
-  projects: ProjectView[];
-}) {
+export function Experience({ profile, projects }: { profile: ProfileView; projects: ProjectView[] }) {
+  const mode = useEditor((s) => s.mode);
+  const viewTab = useEditor((s) => s.viewTab);
   const featured = projects[0];
 
+  const playing = mode === "play";
+  const sceneView = !playing && viewTab === "scene";
+
   return (
-    // z-0, NOT a negative z-index: body carries an opaque background, and a
-    // negative-z-index child paints beneath its parent's background, which
-    // hides the canvas completely.
-    <div className="fixed inset-0 z-0">
+    // Absolute within its host, never a negative z-index: body carries an
+    // opaque background, and a negative-z child paints beneath it.
+    <div className="absolute inset-0 z-0">
       <Canvas
         events={visibleEvents}
         dpr={[1, 1.75]}
         gl={{ antialias: false, powerPreference: "high-performance", alpha: false }}
-        camera={{ fov: 55, near: 0.1, far: 220, position: [0, 0.15, 11] }}
+        camera={{ fov: 55, near: 0.1, far: 220, position: [9, 4, 12] }}
       >
         <Backdrop />
         <Motes />
-        <Guardian />
-        <HandCursor />
-        <Rig />
-        <PerfProbe />
+        {/* LensPass is the render loop: any positive-priority useFrame turns off
+            R3F's automatic render, and PerfProbe below has one. Always mounted. */}
         <LensPass />
+        <PerfProbe />
+        <PauseLoop />
 
-        <DeskScene />
-        <GuardianDraw />
-        <FloorConfirm />
+        {sceneView ? (
+          <>
+            <EditorCamera />
+            <Selection />
+          </>
+        ) : (
+          <Rig />
+        )}
+
+        {playing ? (
+          <>
+            <Guardian />
+            <HandCursor />
+            <DeskScene />
+            <GuardianDraw />
+            <FloorConfirm />
+          </>
+        ) : null}
 
         <BootStation index={indexOf("boot")} />
         <HomeStation index={indexOf("home")} profile={profile} />

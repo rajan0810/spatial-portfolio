@@ -77,7 +77,7 @@ export function BootOverlay() {
 
   return (
     <div
-      className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-void transition-opacity duration-400"
+      className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-void transition-opacity duration-400"
       style={{ opacity: dismissing ? 0 : 1 }}
       role="status"
       aria-label="Starting the headset"

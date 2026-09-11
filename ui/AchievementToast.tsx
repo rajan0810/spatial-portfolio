@@ -54,7 +54,7 @@ export function AchievementToast() {
   }, [pending, current, shiftToast]);
 
   return (
-    <div className="pointer-events-none fixed top-4 left-1/2 z-30 -translate-x-1/2" role="status" aria-live="polite">
+    <div className="pointer-events-none absolute top-4 left-1/2 z-30 -translate-x-1/2" role="status" aria-live="polite">
       {current ? (
         <div
           key={current.title}

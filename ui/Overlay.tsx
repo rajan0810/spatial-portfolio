@@ -3,6 +3,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 import type { ProfileView, ProjectView } from "@/lib/data/types";
+import { withOverrides } from "@/lib/data/overrides";
+import { useEditor } from "@/lib/store/editor";
 import { isLive, useExperience } from "@/lib/store/experience";
 import { rail } from "@/lib/store/rail";
 import { STATIONS, stationWeight } from "@/lib/stations";
@@ -32,6 +34,8 @@ export function Overlay({
 }) {
   const refs = useRef<(HTMLElement | null)[]>([]);
   const live = useExperience((s) => isLive(s.phase));
+  const editing = useEditor((s) => s.mode === "edit");
+  const overrides = useEditor((s) => s.overrides);
 
   useEffect(() => {
     let frame = 0;
@@ -62,14 +66,16 @@ export function Overlay({
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const featured = projects[0];
+  const featured = projects[0] ? withOverrides(projects[0], overrides[`project:${projects[0].slug}`]) : undefined;
+  const me = withOverrides(profile, overrides.player);
 
   // Prose belongs to the environment. On the desk and during setup, the
-  // SetupOverlay owns the screen instead.
-  if (!live) return null;
+  // SetupOverlay owns the screen instead. In the editor's Game tab it is
+  // always on: that tab is what the player would see.
+  if (!live && !editing) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-10">
+    <div className="pointer-events-none absolute inset-0 z-10">
       {/* Scrim: buys text contrast over video without erasing the floor grid,
           which is the main depth cue in the scene. Short and weak on purpose. */}
       <div
@@ -85,17 +91,17 @@ export function Overlay({
 
       <StationLayer ref={(el) => void (refs.current[1] = el)} label="Home">
         <h1 className="text-balance text-4xl font-medium tracking-tight sm:text-6xl">
-          {profile.name}
+          {me.name}
         </h1>
         <p className="mt-4 max-w-xl text-balance text-lg text-ink-dim sm:text-xl">
-          {profile.headline}
+          {me.headline}
         </p>
         <nav className="mt-7 flex flex-wrap items-center gap-3" aria-label="Profiles">
-          {profile.githubUrl ? (
-            <OverlayLink href={profile.githubUrl}>GitHub</OverlayLink>
+          {me.githubUrl ? (
+            <OverlayLink href={me.githubUrl}>GitHub</OverlayLink>
           ) : null}
-          {profile.linkedinUrl ? (
-            <OverlayLink href={profile.linkedinUrl}>LinkedIn</OverlayLink>
+          {me.linkedinUrl ? (
+            <OverlayLink href={me.linkedinUrl}>LinkedIn</OverlayLink>
           ) : null}
           <OverlayLink href="/flat" internal>
             Flat mode
@@ -112,16 +118,16 @@ export function Overlay({
           Come build something spatial
         </h2>
         <nav className="mt-6 flex flex-wrap items-center gap-3" aria-label="Contact">
-          {profile.email ? (
-            <OverlayLink href={`mailto:${profile.email}`}>
-              {profile.email}
+          {me.email ? (
+            <OverlayLink href={`mailto:${me.email}`}>
+              {me.email}
             </OverlayLink>
           ) : null}
-          {profile.githubUrl ? (
-            <OverlayLink href={profile.githubUrl}>GitHub</OverlayLink>
+          {me.githubUrl ? (
+            <OverlayLink href={me.githubUrl}>GitHub</OverlayLink>
           ) : null}
-          {profile.linkedinUrl ? (
-            <OverlayLink href={profile.linkedinUrl}>LinkedIn</OverlayLink>
+          {me.linkedinUrl ? (
+            <OverlayLink href={me.linkedinUrl}>LinkedIn</OverlayLink>
           ) : null}
         </nav>
       </StationLayer>

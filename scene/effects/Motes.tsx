@@ -4,6 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
+import { useEditor } from "@/lib/store/editor";
 import { useExperience } from "@/lib/store/experience";
 import { damp } from "@/lib/store/rail";
 
@@ -63,6 +64,7 @@ const fragmentShader = /* glsl */ `
  */
 export function Motes() {
   const phase = useExperience((s) => s.phase);
+  const editing = useEditor((s) => s.mode === "edit");
   const points = useRef<THREE.Points>(null);
   const mood = useMemo(makeMood, []);
 
@@ -113,7 +115,7 @@ export function Motes() {
 
   useFrame(({ camera, clock }, delta) => {
     uniforms.uTime.value = clock.elapsedTime;
-    const worn = phase === "desk" || phase === "donning" ? 0 : 1;
+    const worn = editing || !(phase === "desk" || phase === "donning") ? 1 : 0;
     uniforms.uVisible.value = damp(uniforms.uVisible.value, worn, 1.5, Math.min(delta, 1 / 20));
     currentMood(mood);
     uniforms.uColor.value.copy(mood.accent).lerp(new THREE.Color("#ffffff"), 0.35);

@@ -1,10 +1,12 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import * as THREE from "three";
 
+import { useEditor } from "@/lib/store/editor";
 import { damp, rail } from "@/lib/store/rail";
+import { sceneRegistry } from "@/lib/store/sceneRegistry";
 import { STATIONS, stationWeight } from "@/lib/stations";
 
 /**
@@ -25,8 +27,27 @@ export function StationGroup({
   const group = useRef<THREE.Group>(null);
   const shown = useRef(0);
 
+  // The editor outlines and moves stations through this registry.
+  useEffect(() => {
+    const id = STATIONS[index].id;
+    if (group.current) sceneRegistry.set(id, group.current);
+    return () => {
+      sceneRegistry.delete(id);
+    };
+  }, [index]);
+
   useFrame((_, delta) => {
     if (!group.current) return;
+
+    // In the editor every station is present, at rest, fully lit: the scene
+    // view shows the whole scene, not the one the player would be nearest.
+    const editor = useEditor.getState();
+    if (editor.mode === "edit" && editor.viewTab === "scene") {
+      shown.current = 1;
+      group.current.visible = true;
+      group.current.rotation.x = 0;
+      return;
+    }
 
     const weight = stationWeight(rail.progress, index, 0.62);
     shown.current = damp(shown.current, weight, 8, Math.min(delta, 1 / 20));
@@ -54,7 +75,9 @@ export function stationFade(index: number, scale = 1) {
     _elapsed: number,
     delta: number,
   ) => {
-    const weight = stationWeight(rail.progress, index, 0.62) * scale;
+    const editor = useEditor.getState();
+    const edit = editor.mode === "edit" && editor.viewTab === "scene";
+    const weight = edit ? scale : stationWeight(rail.progress, index, 0.62) * scale;
     uniforms.uOpacity.value = damp(
       uniforms.uOpacity.value,
       weight,

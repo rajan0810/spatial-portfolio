@@ -1,13 +1,19 @@
-import { getProfile, getProjects } from "@/lib/data";
-import { ExperienceShell } from "@/ui/ExperienceShell";
+import { getAchievements, getProfile, getProjects, getSkills, getTimeline } from "@/lib/data";
+import { EditorShell } from "@/ui/editor/EditorShell";
 
 /**
- * The Experience. A server component: data is fetched here through lib/data and
- * handed to the client shell as plain props, so no Supabase client and no
- * database code reaches the browser.
+ * The editor. A server component: every table is read here through lib/data
+ * and handed to the client as plain props, so no database code reaches the
+ * browser. The inspector shows all of it; the scene renders what has stations.
  */
-export default async function ExperiencePage() {
-  const [profile, projects] = await Promise.all([getProfile(), getProjects()]);
+export default async function EditorPage() {
+  const [profile, projects, skills, achievements, timeline] = await Promise.all([
+    getProfile(),
+    getProjects(),
+    getSkills(),
+    getAchievements(),
+    getTimeline(),
+  ]);
 
-  return <ExperienceShell profile={profile} projects={projects} />;
+  return <EditorShell profile={profile} projects={projects} skills={skills} achievements={achievements} timeline={timeline} />;
 }

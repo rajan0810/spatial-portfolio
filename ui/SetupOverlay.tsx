@@ -37,7 +37,7 @@ export function SetupOverlay() {
     <>
       <div
         aria-hidden
-        className="pointer-events-none fixed inset-0 z-[45] bg-black transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 z-[45] bg-black transition-opacity duration-500"
         style={{ opacity: dark ? 1 : 0 }}
       />
 
@@ -99,7 +99,7 @@ export function SetupOverlay() {
 
 function Prompt({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-6 pb-16 sm:pb-20">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center px-6 pb-16 sm:pb-20">
       <div className="flex flex-col items-center text-center [&_a]:pointer-events-auto [&_button]:pointer-events-auto">{children}</div>
     </div>
   );
