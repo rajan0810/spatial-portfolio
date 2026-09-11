@@ -6,7 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file=.env.local scripts/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "db:policies": "tsx --env-file=.env.local scripts/apply-sql.ts lib/db/policies.sql",
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "db:setup": "npm run db:migrate && npm run db:policies && npm run db:seed"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
@@ -29,6 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/three": "^0.185.4",
+    "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
