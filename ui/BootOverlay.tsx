@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { sfx } from "@/lib/audio";
 import { useExperience } from "@/lib/store/experience";
 
 const LINES = [
@@ -50,6 +51,7 @@ export function BootOverlay() {
       return;
     }
 
+    sfx.boot();
     const timers = LINES.map((_, i) =>
       window.setTimeout(() => setStep(i + 1), STEP_MS * (i + 1)),
     );

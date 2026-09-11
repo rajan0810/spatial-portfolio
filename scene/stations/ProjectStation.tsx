@@ -11,6 +11,7 @@ import { STATIONS, stationWeight } from "@/lib/stations";
 
 import { Panel } from "../panels/Panel";
 import { VideoPanel } from "../panels/VideoPanel";
+import { useCourtroomTexture } from "../preview/Courtroom";
 import { StationGroup, stationFade } from "./StationGroup";
 
 /**
@@ -36,17 +37,23 @@ export function ProjectStation({
 
   return (
     <StationGroup index={index}>
-      {/* Centre: the demo loop. Falls back to empty glass when no video exists. */}
-      <VideoPanel
-        url={project.loopVideoUrl}
-        width={6.4}
-        height={3.6}
-        position={[0, 2.0, z]}
-        curve={0.4}
-        radius={0.06}
-        opacity={0}
-        onFrame={stationFade(index)}
-      />
+      {/* Centre: the demo loop — or, until one exists, a live procedural
+          courtroom, so the screen is never an empty rectangle. */}
+      {project.loopVideoUrl ? (
+        <VideoPanel
+          url={project.loopVideoUrl}
+          width={6.4}
+          height={3.6}
+          position={[0, 2.0, z]}
+          curve={0.4}
+          radius={0.06}
+          opacity={0}
+          grabbable
+          onFrame={stationFade(index)}
+        />
+      ) : (
+        <PreviewPanel index={index} z={z} />
+      )}
 
       <SurfaceLabel
         index={index}
@@ -103,6 +110,7 @@ function Wing({
         curve={0.3}
         radius={0.08}
         opacity={0}
+        grabbable
         onFrame={stationFade(index, 0.85)}
       />
       <SurfaceLabel
@@ -120,6 +128,24 @@ function Wing({
         lineHeight={1.9}
       />
     </group>
+  );
+}
+
+/** The centre screen showing the procedural courtroom. Grab it; it springs back. */
+function PreviewPanel({ index, z }: { index: number; z: number }) {
+  const texture = useCourtroomTexture(index);
+  return (
+    <Panel
+      map={texture}
+      width={6.4}
+      height={3.6}
+      position={[0, 2.0, z]}
+      curve={0.4}
+      radius={0.06}
+      opacity={0}
+      grabbable
+      onFrame={stationFade(index)}
+    />
   );
 }
 

@@ -74,13 +74,26 @@ export function ScrollRail() {
   }, [reduceMotion, live]);
 
   // Pointer drives the fake head-tracking parallax. Also written outside React.
+  // On a phone the pointer barely moves, so device tilt takes over: leaning
+  // the phone leans the environment, which is as close to head tracking as a
+  // flat screen gets.
   useEffect(() => {
     const onPointerMove = (event: PointerEvent) => {
       rail.pointerX = (event.clientX / window.innerWidth) * 2 - 1;
       rail.pointerY = (event.clientY / window.innerHeight) * 2 - 1;
     };
+    const onTilt = (event: DeviceOrientationEvent) => {
+      if (event.gamma == null || event.beta == null) return;
+      rail.pointerX = Math.max(-1, Math.min(1, event.gamma / 30));
+      rail.pointerY = Math.max(-1, Math.min(1, (event.beta - 45) / 30));
+    };
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
     window.addEventListener("pointermove", onPointerMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onPointerMove);
+    if (coarse) window.addEventListener("deviceorientation", onTilt, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("deviceorientation", onTilt);
+    };
   }, []);
 
   if (!live) return null;

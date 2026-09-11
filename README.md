@@ -14,6 +14,16 @@ learned to stop noticing. Taking the headset off is flat mode.
 
 A returning visitor's headset remembers its setup, exactly as a real one would.
 
+Inside, it behaves like a place. **Your cursor is a tracked hand** — open at rest, pointing over
+anything interactive, pinching when you press, with the ray appearing as it does on the headset.
+**Panels can be grabbed and thrown**: drag one off its mount, let go with velocity, and it flies and
+springs home. **Each station has its own weather** — indigo dawn at home, courtroom amber at JustiX,
+violet night at the end — carried by the sky, the floor grid and the dust drifting in the air.
+**Every sound is synthesised in WebAudio**, no files: hover ticks, pinch clicks, a whoosh on a
+throw, a chime for an achievement, a room tone. Opt-in, asked once. Until a real demo loop exists,
+the JustiX screen shows **a live procedural courtroom** — bench, lecterns, a human figure facing an
+adversarial AI, a gavel now and then — rendered to texture inside the panel.
+
 Two front-ends over one content source:
 
 | | |
@@ -56,12 +66,20 @@ The visit itself is a small state machine in `lib/store/experience.ts`:
 scene in the site and unmounts the moment the headset is on. `scene/setup/` holds the two
 first-time-setup interactions; `scene/effects/Guardian.tsx` turns the polygon you drew into walls;
 `scene/effects/LensPass.tsx` is the full-screen pass everything is seen through.
+`scene/input/HandCursor.tsx` is the hand; `lib/store/hand.ts` is the pointer state it reads, written
+by panels from their handlers. Grab physics live inside `Panel` itself (`grabbable`), as a spring
+integrated in `useFrame` — nothing touches React while a panel is in flight. `scene/effects/mood.ts`
+is the per-station palette every atmospheric layer reads; `scene/preview/Courtroom.tsx` is the
+render-to-texture scene; `lib/audio.ts` is the synthesiser.
 
 Two hard-won rules, each of which cost a silent, error-free blank scene to learn:
 
 - **Own your `ShaderMaterial`.** Passing `uniforms` to a `<shaderMaterial>` element does not
   guarantee the rendered material keeps that object; mutate an orphan and nothing changes. Every
   custom material here is constructed in `useMemo` and attached with `<primitive>`.
+- **Hover state that a hand reads must be self-correcting.** A counter incremented on pointer-over
+  and decremented on pointer-out drifts the first time a hovered panel unmounts; the ray then stays
+  lit forever. Each panel remembers whether *it* is hovered and cleans up after itself.
 - **three's raycaster ignores `visible`.** A hidden object with an `onClick` still swallows clicks
   that pass through it. The `Canvas` uses an event filter that drops hits on anything hidden anywhere
   in its ancestry.
@@ -88,13 +106,14 @@ lock is a Supabase Auth session enforced in middleware.
 
 Enforced, not aspirational — a VR developer's portfolio dropping frames undercuts the whole argument.
 
-- Initial JS ≤ 300KB gzipped. Currently **184KB** for the experience, **173KB** for flat mode.
-- three + R3F + SDF text + the scene (~283KB gz) is a deferred chunk that arrives while you look at
-  the desk.
+- Initial JS ≤ 300KB gzipped. Currently **185KB** for the experience, **173KB** for flat mode.
+- three + R3F + SDF text + the scene (~287KB gz) is a deferred chunk that arrives while you look at
+  the desk. Audio adds nothing: it is synthesised.
 - Flat mode ships zero WebGL, verified against the built output.
 - One light in the whole site — the desk lamp — and it unmounts with the desk. The environment is
   all emissive glass; no shadow maps anywhere.
 - The lens pass is a single extra full-screen fragment pass, off on coarse-pointer devices.
+- The courtroom preview renders only while its station is on screen, at 768×432.
 - dpr capped at 1.75; MSAA off, since the panel shader antialiases its own silhouette.
 - Stations are culled by visibility, so the rail costs as much as the one station you are looking at.
 

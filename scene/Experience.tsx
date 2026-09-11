@@ -12,6 +12,8 @@ import { DeskScene } from "./desk/DeskScene";
 import { Backdrop } from "./effects/Backdrop";
 import { Guardian } from "./effects/Guardian";
 import { LensPass } from "./effects/LensPass";
+import { Motes } from "./effects/Motes";
+import { HandCursor } from "./input/HandCursor";
 import { FloorConfirm } from "./setup/FloorConfirm";
 import { GuardianDraw } from "./setup/GuardianDraw";
 import { BootStation } from "./stations/BootStation";
@@ -69,7 +71,9 @@ export function Experience({
         camera={{ fov: 55, near: 0.1, far: 220, position: [0, 0.15, 11] }}
       >
         <Backdrop />
+        <Motes />
         <Guardian />
+        <HandCursor />
         <Rig />
         <PerfProbe />
         <LensPass />

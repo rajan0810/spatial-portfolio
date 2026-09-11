@@ -56,6 +56,12 @@ body.experience {
   border-radius: 1rem;
 }
 
+/* While the headset is on, the tracked hand in the scene is the cursor. */
+body.hand-cursor,
+body.hand-cursor * {
+  cursor: none !important;
+}
+
 /* Quest-style focus ring — visible, on-theme, never removed. */
 @layer base {
   :focus-visible {

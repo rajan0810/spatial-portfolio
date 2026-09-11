@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { ProfileView, ProjectView } from "@/lib/data/types";
-import { useExperience } from "@/lib/store/experience";
+import { isLive, useExperience } from "@/lib/store/experience";
 
 import { AchievementToast } from "./AchievementToast";
 import { BootOverlay } from "./BootOverlay";
@@ -14,6 +14,7 @@ import { Overlay } from "./Overlay";
 import { PerfHud } from "./PerfHud";
 import { ScrollRail } from "./ScrollRail";
 import { SetupOverlay } from "./SetupOverlay";
+import { SoundPrompt } from "./SoundPrompt";
 import { StationIndicator } from "./StationIndicator";
 import { Vignette } from "./Vignette";
 
@@ -70,6 +71,14 @@ export function ExperienceShell({
     return () => document.body.classList.remove("experience");
   }, [setComfort, setPhase]);
 
+  // Once the headset is on, your hand is the cursor. Only with a fine pointer:
+  // on touch there is no cursor to replace.
+  useEffect(() => {
+    const fine = !window.matchMedia("(pointer: coarse)").matches;
+    document.body.classList.toggle("hand-cursor", fine && isLive(phase));
+    return () => document.body.classList.remove("hand-cursor");
+  }, [phase]);
+
   // Taking the headset off: the lenses close, then flat mode.
   useEffect(() => {
     if (phase !== "doffing") return;
@@ -108,6 +117,7 @@ export function ExperienceShell({
           <Experience profile={profile} projects={projects} />
           <Overlay profile={profile} projects={projects} />
           <SetupOverlay />
+          <SoundPrompt />
           <Vignette />
           <StationIndicator />
           <ComfortMenu />

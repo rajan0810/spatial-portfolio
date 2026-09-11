@@ -69,6 +69,15 @@ type ExperienceState = {
   /** Achievement toasts fired this session, by id, so they fire only once. */
   unlocked: string[];
   unlock: (id: string) => void;
+  /** Toasts waiting to be shown, in order. Consumed by AchievementToast. */
+  pendingToasts: string[];
+  /** Unlock and queue a toast. Safe to call from anywhere, including the render loop. */
+  announce: (id: string) => void;
+  shiftToast: () => void;
+
+  /** Whether the one-time sound prompt has been answered this session. */
+  soundPromptDone: boolean;
+  setSoundPromptDone: () => void;
 };
 
 const DEFAULT_COMFORT: ComfortSettings = {
@@ -114,6 +123,16 @@ export const useExperience = create<ExperienceState>()(
             ? state
             : { unlocked: [...state.unlocked, id] },
         ),
+      pendingToasts: [],
+      announce: (id) => {
+        const state = get();
+        if (state.unlocked.includes(id)) return;
+        set({ unlocked: [...state.unlocked, id], pendingToasts: [...state.pendingToasts, id] });
+      },
+      shiftToast: () => set((state) => ({ pendingToasts: state.pendingToasts.slice(1) })),
+
+      soundPromptDone: false,
+      setSoundPromptDone: () => set({ soundPromptDone: true }),
     }),
     {
       name: "rh-headset",

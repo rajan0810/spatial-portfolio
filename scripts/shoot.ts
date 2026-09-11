@@ -88,6 +88,22 @@ async function main() {
     console.log(`✓ ${STATIONS[i]}`);
   }
 
+  // Grab the JustiX centre panel, drag it, and throw it. The panel should follow
+  // the hand and spring home; nothing should error.
+  await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), (2 / (STATIONS.length - 1)) * height);
+  await page.waitForTimeout(1500);
+  await page.mouse.move(720, 280);
+  await page.waitForTimeout(200);
+  await page.mouse.down();
+  await page.mouse.move(520, 420, { steps: 12 });
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: `${OUT}/h-grab.png` });
+  await page.mouse.move(980, 300, { steps: 4 });
+  await page.mouse.up();
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: `${OUT}/i-thrown.png` });
+  console.log("✓ grab + throw");
+
   // Mid-transition: the guardian walls you drew should be showing.
   await page.evaluate((y) => window.scrollTo({ top: y, behavior: "auto" }), height * 0.5);
   await page.waitForTimeout(700);

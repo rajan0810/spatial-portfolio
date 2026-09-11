@@ -28,6 +28,7 @@ export function GuardianDraw() {
   const phase = useExperience((s) => s.phase);
   const setGuardian = useExperience((s) => s.setGuardian);
   const setPhase = useExperience((s) => s.setPhase);
+  const announce = useExperience((s) => s.announce);
 
   const [points, setPoints] = useState<THREE.Vector3[]>([]);
   const drawing = useRef(false);
@@ -73,6 +74,7 @@ export function GuardianDraw() {
 
     if (polygon.length >= 3 && perimeter >= MIN_PERIMETER) {
       setGuardian(polygon);
+      announce("guardian-drawn");
       setPhase("floor");
     } else {
       setPoints([]);
