@@ -1,70 +1,69 @@
-import type { ProjectLink, TechGroup } from "@/lib/db/schema";
-
 /**
- * View models. The DB rows carry Date objects, soft-delete bookkeeping and
- * draft flags that no renderer should ever see. These flat, string-only shapes
- * are what cross into client components — smaller RSC payloads, and no way for
- * an unpublished field to leak into the scene by accident.
+ * The shapes the site renders.
+ *
+ * These are the canonical types: the content module in lib/content implements
+ * them directly, which is why the site needs no database to render. When the
+ * admin portal returns, the database schema is written to match *these* — not
+ * the other way round.
  */
 
-export type ProjectView = {
-  slug: string;
-  title: string;
-  subtitle: string | null;
-  description: string;
-  role: string | null;
-  year: number | null;
-  platform: string | null;
-  tech: TechGroup[];
-  highlights: string[];
-  links: ProjectLink[];
-  loopVideoUrl: string | null;
-  fullVideoUrl: string | null;
-  posterUrl: string | null;
-};
+export type TechGroup = { surface: string; items: string[] };
 
-export type AchievementView = {
-  id: string;
-  title: string;
-  event: string | null;
-  placement: string | null;
-  awardedOn: string | null;
-  blurb: string | null;
-  link: string | null;
-};
-
-export type TimelineView = {
-  id: string;
-  role: string;
-  org: string;
-  startDate: string | null;
-  endDate: string | null;
-  blurb: string | null;
-};
-
-export type SkillView = {
-  id: string;
-  name: string;
-  category: string;
-  level: number;
+export type ProjectLink = {
+  type: "github" | "linkedin" | "live" | "youtube" | "other";
+  url: string;
+  label: string;
 };
 
 export type ProfileView = {
   name: string;
   headline: string;
   bio: string;
+  location: string;
   resumeUrl: string | null;
   githubUrl: string | null;
   linkedinUrl: string | null;
   email: string | null;
+  phone: string | null;
 };
 
-export const CACHE_TAGS = {
-  projects: "projects",
-  achievements: "achievements",
-  timeline: "timeline",
-  skills: "skills",
-  profile: "profile",
-} as const;
+export type ProjectView = {
+  slug: string;
+  title: string;
+  subtitle: string;
+  year: number;
+  when: string;
+  platform: string;
+  role: string;
+  description: string;
+  tech: TechGroup[];
+  highlights: string[];
+  links: ProjectLink[];
+  /** The prize it won, if it won one. */
+  award: string | null;
+};
 
-export type CacheTag = (typeof CACHE_TAGS)[keyof typeof CACHE_TAGS];
+export type AchievementTier = "patent" | "gold" | "silver" | "bronze" | "cert";
+
+export type AchievementView = {
+  id: string;
+  title: string;
+  event: string;
+  placement: string;
+  when: string;
+  tier: AchievementTier;
+};
+
+export type TimelineKind = "work" | "education" | "community";
+
+export type TimelineView = {
+  id: string;
+  kind: TimelineKind;
+  role: string;
+  org: string;
+  when: string;
+  current: boolean;
+  bullets: string[];
+};
+
+export type SkillGroupView = { category: string; items: string[] };

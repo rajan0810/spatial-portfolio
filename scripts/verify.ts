@@ -1,122 +1,206 @@
 /**
- * Runtime verification of the dig's non-negotiables.
+ * The island's non-negotiables, checked in a real browser.
  *
  *   npx tsx scripts/verify.ts [baseUrl]
- *
- * Needs the dev server running and .env.local for the PostgREST checks.
  */
-import { config } from "dotenv";
-import { chromium } from "playwright-core";
-
-config({ path: ".env.local", quiet: true });
+import { chromium, type Page } from "playwright-core";
 
 const BASE = process.argv[2] ?? "http://localhost:3000";
 const results: { name: string; pass: boolean; detail: string }[] = [];
 const check = (name: string, pass: boolean, detail: string) => results.push({ name, pass, detail });
 
-async function rest(path: string, init: RequestInit = {}) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return fetch(`${url}/rest/v1/${path}`, {
-    ...init,
-    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json", ...(init.headers ?? {}) },
-  });
+const BIOME = { DEEP: 0, WATER: 1, SAND: 2, GRASS: 3, FOREST: 4 };
+
+type Probe = { x: number; y: number; biome: number; near: string | null; props: number };
+const probe = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __island: () => Probe }).__island());
+
+async function ready(page: Page) {
+  await page.waitForSelector("canvas", { timeout: 45_000 });
+  await page.waitForFunction(() => !document.body.innerText.includes("Drawing the island"), { timeout: 45_000 });
+  await page.waitForTimeout(700);
+}
+
+async function walk(page: Page, key: string, ms: number) {
+  await page.keyboard.down(key);
+  await page.waitForTimeout(ms);
+  await page.keyboard.up(key);
+  await page.waitForTimeout(220);
 }
 
 async function main() {
-  // --- the public door: PostgREST with the anon key -----------------------------
-  {
-    const read = await rest("drops?select=*&limit=1");
-    const rows = (await read.json()) as Record<string, unknown>[];
-    check("anon can read drops", read.ok, `http ${read.status}, ${rows.length} row(s)`);
-    const leaked = rows[0] ? Object.keys(rows[0]).filter((k) => /token|ip/.test(k)) : [];
-    check("no secret columns in drops", leaked.length === 0, leaked.length ? `leaked: ${leaked.join(", ")}` : "clean");
-
-    const secrets = await rest("drop_secrets?select=*&limit=1");
-    check("drop_secrets invisible to anon", !secrets.ok, `http ${secrets.status}`);
-
-    const insert = await rest("drops", { method: "POST", body: JSON.stringify({ emoji: "🔥", word: "pwned" }) });
-    check("anon cannot insert a drop", !insert.ok, `http ${insert.status}`);
-
-    const update = await rest("drops?settled=eq.true&limit=1", {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify({ word: "pwned" }),
-    });
-    const changed = update.ok ? ((await update.json()) as unknown[]).length : 0;
-    check("anon cannot update a drop", changed === 0, `${changed} row(s) changed`);
-
-    const del = await rest("drops?word=eq.pwned", { method: "DELETE", headers: { Prefer: "return=representation" } });
-    const deleted = del.ok ? ((await del.json()) as unknown[]).length : 0;
-    check("anon cannot delete a drop", deleted === 0, `${deleted} row(s) deleted`);
-  }
-
   const browser = await chromium.launch({ channel: "chrome" });
 
-  // --- moderation + rate limit, through the real UI ----------------------------------
+  // --- the world builds, and you can walk around it --------------------------
   {
-    const ip = `192.0.2.${(Date.now() % 250) + 1}`;
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, extraHTTPHeaders: { "x-forwarded-for": ip } });
-    const page = await context.newPage();
-    await page.addInitScript(() => localStorage.clear());
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    // Clear once per context, not on every navigation — a reload has to be
+  // able to read back what the previous page wrote.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("cleared")) {
+      localStorage.clear();
+      sessionStorage.setItem("cleared", "1");
+    }
+  });
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 45_000 });
+    await ready(page);
 
-    await page.getByRole("button", { name: "Leave something" }).click();
-    await page.getByLabel("Your word").fill("shit");
-    await page.getByRole("button", { name: "Pick it up" }).click();
-    check("deny-listed word is refused", (await page.getByText("Not that word.").count()) > 0, "refusal shown");
+    const start = await probe(page);
+    check("the island generates", start.props > 1500, `${start.props} props scattered`);
 
-    await page.getByLabel("Your word").fill("http://x");
-    await page.getByRole("button", { name: "Pick it up" }).click();
-    check("non-letters are refused", (await page.getByText("Letters only").count()) > 0, "pattern enforced");
+    await walk(page, "ArrowRight", 900);
+    const moved = await probe(page);
+    check("the character walks", Math.abs(moved.x - start.x) > 60, `moved ${Math.round(moved.x - start.x)}px east`);
 
-    await page.getByLabel("Your word").fill("verify");
-    await page.getByRole("button", { name: "Pick it up" }).click();
-    await page.getByText("Click anywhere over the ground").waitFor({ timeout: 15_000 });
-    await page.mouse.click(640, 560);
-    await page.getByText("It stays.").waitFor({ timeout: 40_000 });
+    // Head for open sea and keep going: the shore has to stop you.
+    await page.getByRole("button", { name: /Map/ }).click();
+    await page.getByRole("button", { name: /The Beacon/ }).click();
+    await page.waitForTimeout(600);
+    await walk(page, "ArrowDown", 5000);
+    const shore = await probe(page);
+    check(
+      "you cannot walk into the sea",
+      shore.biome !== BIOME.WATER && shore.biome !== BIOME.DEEP,
+      `ended on ${["deep", "water", "sand", "grass", "forest"][shore.biome]}`,
+    );
+    // Walking one straight line can always be stopped by a tree, so ask the
+    // map itself: is the sand between here and the sea actually walkable?
+    const beach = await page.evaluate(
+      ([px, py]) => {
+        const at = (window as unknown as { __islandAt: (x: number, y: number) => { biome: number; solid: boolean } }).__islandAt;
+        let sand = 0;
+        let walkable = 0;
+        for (let dy = 0; dy < 400; dy += 8) {
+          const cell = at(px, py + dy);
+          if (cell.biome === 2) {
+            sand += 1;
+            if (!cell.solid) walkable += 1;
+          }
+        }
+        return { sand, walkable };
+      },
+      [shore.x, shore.y],
+    );
+    check(
+      "the beach below is walkable sand",
+      beach.sand > 0 && beach.walkable === beach.sand,
+      `${beach.walkable}/${beach.sand} sand samples walkable`,
+    );
 
-    // Same IP, fresh browser state: the server must refuse a second drop.
-    const again = await context.newPage();
-    await again.addInitScript(() => localStorage.clear());
-    await again.goto(BASE, { waitUntil: "domcontentloaded" });
-    await again.waitForSelector("canvas", { timeout: 45_000 });
-    await again.getByRole("button", { name: "Leave something" }).click();
-    await again.getByLabel("Your word").fill("twice");
-    await again.getByRole("button", { name: "Pick it up" }).click();
-    const limited = await again.getByText("One token per person per day").waitFor({ timeout: 15_000 }).then(() => true).catch(() => false);
-    check("second drop from the same IP is refused", limited, limited ? "rate limit held" : "no refusal shown");
-    await context.close();
+    // Frame budget, sampled over a second of real rendering.
+    // Passed as source, not a function: the bundler rewrites named inner
+    // functions with a __name helper that does not exist in the page.
+    const fps = (await page.evaluate(`new Promise((resolve) => {
+      let frames = 0;
+      const t0 = performance.now();
+      const tick = () => {
+        frames += 1;
+        if (performance.now() - t0 < 1000) requestAnimationFrame(tick);
+        else resolve(frames);
+      };
+      requestAnimationFrame(tick);
+    })`)) as number;
+    check("holds a smooth frame rate", fps >= 50, `${fps} fps`);
+    await page.close();
   }
 
-  // --- keyboard, indexability, mobile, flat ----------------------------------------
+  // --- every place is reachable, and opens real content ----------------------
   {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    // Clear once per context, not on every navigation — a reload has to be
+  // able to read back what the previous page wrote.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("cleared")) {
+      localStorage.clear();
+      sessionStorage.setItem("cleared", "1");
+    }
+  });
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 45_000 });
+    await ready(page);
+
+    await page.getByRole("button", { name: /Map/ }).click();
+    const entries = await page.locator('[role="dialog"][aria-label="Island map"] button').count();
+    check("the map lists every place", entries >= 12, `${entries} destinations`);
+
+    await page.getByRole("button", { name: /The Courthouse/ }).click();
+    await page.waitForTimeout(600);
+    const atDoor = await probe(page);
+    check("travelling puts you at the door", atDoor.near === "justix", `nearest: ${atDoor.near}`);
+
+    await page.keyboard.press("e");
+    await page.waitForTimeout(400);
+    const body = await page.locator('[role="dialog"]').last().innerText();
+    check(
+      "the panel carries the real case study",
+      body.includes("JustiX") && body.includes("Socket.io") && body.includes("courtroom"),
+      `${body.length} characters of content`,
+    );
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    check("Escape leaves the building", (await page.locator('[role="dialog"]').count()) === 0, "panel closed");
+
+    // Discovery survives a reload.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await ready(page);
+    const found = await page.evaluate(() => JSON.parse(localStorage.getItem("island:found") ?? "[]").length);
+    check("discovery persists across a reload", found >= 1, `${found} place(s) remembered`);
+    await page.close();
+  }
+
+  // --- keyboard only ---------------------------------------------------------
+  {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await ready(page);
     await page.keyboard.press("Tab");
-    const first = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
-    check("skip link is the first tab stop", first.toLowerCase().includes("flat"), `first focus: "${first}"`);
-    const html = await (await fetch(BASE)).text();
-    check("project copy is in the server HTML", html.includes("JustiX") && html.includes("adversarial"), "indexable");
+    const first = await page.evaluate(() => {
+      const el = document.activeElement as HTMLAnchorElement | null;
+      return { tag: el?.tagName ?? "", href: el?.getAttribute("href") ?? "" };
+    });
+    check(
+      "Tab moves focus to the skip link",
+      first.tag === "A" && first.href === "/flat",
+      `focused <${first.tag.toLowerCase()} href="${first.href}">`,
+    );
+
+    await page.keyboard.press("m");
+    await page.waitForTimeout(300);
+    check("M opens the map", (await page.locator('[aria-label="Island map"]').count()) === 1, "map opened by keyboard");
     await page.close();
   }
+
+  // --- the page version ------------------------------------------------------
   {
-    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
-    await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("canvas", { timeout: 45_000 });
-    await page.waitForTimeout(1000);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    check("no horizontal overflow on mobile", overflow <= 1, `overflow ${overflow}px`);
-    await page.close();
-  }
-  {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(800);
-    check("flat mode mounts no canvas", (await page.locator("canvas").count()) === 0, "canvas-free");
-    check("flat mode has an h1", Boolean((await page.locator("h1").first().textContent())?.trim()), "h1 present");
+    await page.waitForTimeout(500);
+    check("flat mode draws no canvas", (await page.locator("canvas").count()) === 0, "canvas-free");
+
+    const html = await (await fetch(`${BASE}/flat`)).text();
+    const projects = ["JustiX", "Awaaz", "Hatch", "NOVA", "INFERNO", "Xposure", "Edventures"];
+    const missing = projects.filter((p) => !html.includes(p));
+    check("every project is in the server HTML", missing.length === 0, missing.length ? `missing ${missing.join(", ")}` : "all 7 indexable");
+    check(
+      "the patent and the wins are in the HTML",
+      html.includes("IN202641032832") && html.includes("Code2Create"),
+      "awards indexable",
+    );
+    await page.close();
+  }
+
+  // --- a phone ---------------------------------------------------------------
+  {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 3,
+      isMobile: true,
+      hasTouch: true,
+    });
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await ready(page);
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    check("no horizontal overflow on a phone", overflow <= 1, `overflow ${overflow}px`);
     await page.close();
   }
 
@@ -129,7 +213,7 @@ async function main() {
   if (failed > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });

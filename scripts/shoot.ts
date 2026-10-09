@@ -1,164 +1,131 @@
 /**
- * Drives the running dev server in a real browser, captures console output,
- * and screenshots the dig: the surface, leaving a token, watching it fall and
- * settle, a slab, the floor, a dig-and-heal, and a second visitor whose drop
- * raises the first visitor's live count.
+ * Walks the island in a real browser and photographs it.
  *
- * A physics-and-realtime page cannot be verified by a passing build. Uses
- * locally installed Chrome via playwright-core.
+ * A procedurally drawn, physics-free but fully interactive canvas cannot be
+ * checked by a passing build: terrain generation, depth sorting, collision and
+ * the day/night pass are all invisible until something renders. Uses the
+ * locally installed Chrome through playwright-core.
  *
  *   npx tsx scripts/shoot.ts [outDir] [baseUrl]
  */
 import { mkdir } from "node:fs/promises";
 
-import { chromium, type Browser, type Page } from "playwright-core";
+import { chromium, type Page } from "playwright-core";
 
 const OUT = process.argv[2] ?? ".shots";
 const BASE = process.argv[3] ?? "http://localhost:3000";
 
-async function open(browser: Browser, problems: string[], forwardedFor: string) {
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    deviceScaleFactor: 2,
-    // Each context is a different "visitor" for the per-IP limit.
-    extraHTTPHeaders: { "x-forwarded-for": forwardedFor },
-  });
-  const page = await context.newPage();
-  page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.type() === "warning") problems.push(`[${msg.type()}] ${msg.text()}`);
-  });
-  page.on("pageerror", (err) => problems.push(`[pageerror] ${err.message}`));
-  // A fresh visitor once per context — not on every navigation, or the reload
-  // check below would be testing nothing.
-  await page.addInitScript(() => {
-    if (!sessionStorage.getItem("shoot:cleared")) {
-      localStorage.clear();
-      sessionStorage.setItem("shoot:cleared", "1");
-    }
-  });
-  await page.goto(BASE, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("canvas", { timeout: 45_000 });
-  await page.waitForTimeout(1500);
-  return page;
+async function walk(page: Page, key: string, ms: number) {
+  await page.keyboard.down(key);
+  await page.waitForTimeout(ms);
+  await page.keyboard.up(key);
+  await page.waitForTimeout(260);
 }
 
-async function leaveSomething(page: Page, word: string, emojiIndex: number) {
-  await page.getByRole("button", { name: "Leave something" }).click();
-  await page.getByRole("radio").nth(emojiIndex).click();
-  await page.getByLabel("Your word").fill(word);
-  await page.getByRole("button", { name: "Pick it up" }).click();
-  // Either we are holding the token, or the server said no — say which.
-  const holding = page.getByText("Click anywhere over the ground");
-  const refused = page.locator("p.text-ember, span.text-ember");
-  await Promise.race([holding.waitFor({ timeout: 20_000 }), refused.first().waitFor({ timeout: 20_000 })]);
-  if (await refused.count()) throw new Error(`drop refused: ${await refused.first().textContent()}`);
+async function travel(page: Page, name: string) {
+  await page.getByRole("button", { name: /Map/ }).click();
+  await page.getByRole("button", { name: new RegExp(name) }).click();
+  await page.waitForTimeout(700);
 }
-
-const total = (page: Page) =>
-  page.evaluate(() => {
-    const m = document.body.innerText.match(/([\d,]+) have left something/);
-    return m ? Number(m[1].replace(/,/g, "")) : -1;
-  });
 
 async function main() {
   await mkdir(OUT, { recursive: true });
   const browser = await chromium.launch({ channel: "chrome" });
   const problems: string[] = [];
-  // Letters only: the moderation refuses digits, correctly.
-  const stamp = Array.from({ length: 4 }, () => "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)]).join("");
-  // Fresh IPs per run: the server allows one drop per IP per day.
-  const octet = Math.floor(Math.random() * 200) + 1;
-  const block = Math.floor(Math.random() * 250) + 1;
 
-  // --- visitor A -------------------------------------------------------------
-  const a = await open(browser, problems, `10.${block}.${octet}.${Math.floor(Math.random() * 250) + 1}`);
-  await a.screenshot({ path: `${OUT}/00-surface.png` });
-  console.log("✓ surface");
+  const open = async (hour: number) => {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+    // Pin the clock so the day/night pass is reproducible between runs.
+    await context.clock.setFixedTime(new Date(`2026-06-15T${String(hour).padStart(2, "0")}:40:00`));
+    const page = await context.newPage();
+    page.on("console", (m) => {
+      if (m.type() === "error" || m.type() === "warning") problems.push(`[${m.type()}] ${m.text()}`);
+    });
+    page.on("pageerror", (e) => problems.push(`[pageerror] ${e.message}`));
+    // Clear once per context, not on every navigation — a reload has to be
+  // able to read back what the previous page wrote.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("cleared")) {
+      localStorage.clear();
+      sessionStorage.setItem("cleared", "1");
+    }
+  });
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector("canvas", { timeout: 45_000 });
+    await page.waitForFunction(() => !document.body.innerText.includes("Drawing the island"), { timeout: 45_000 });
+    await page.waitForTimeout(900);
+    return page;
+  };
 
-  await leaveSomething(a, `hello${stamp}`, 5);
-  await a.mouse.move(700, 640);
-  await a.waitForTimeout(400);
-  await a.screenshot({ path: `${OUT}/01-holding.png` });
-  console.log("✓ holding a token");
+  // --- daytime tour ----------------------------------------------------------
+  const day = await open(13);
+  await day.screenshot({ path: `${OUT}/00-plaza.png` });
+  console.log("✓ the plaza");
 
-  await a.mouse.click(700, 640);
-  await a.waitForTimeout(450);
-  await a.screenshot({ path: `${OUT}/02-falling.png` });
-  await a.getByText("It stays.").waitFor({ timeout: 40_000 });
-  const totalBefore = await total(a);
-  console.log(`✓ token settled and persisted (total ${totalBefore})`);
+  await walk(day, "ArrowUp", 1700);
+  await day.screenshot({ path: `${OUT}/01-north.png` });
+  console.log("✓ walked north");
 
-  // --- visitor B drops; A should see the count rise live ----------------------
-  const b = await open(browser, problems, `10.${block}.${octet}.${Math.floor(Math.random() * 250) + 1}`);
-  await leaveSomething(b, `there${stamp}`, 12);
-  await b.mouse.click(420, 640);
-  await b.getByText("It stays.").waitFor({ timeout: 40_000 });
-  console.log("✓ second visitor's token settled");
-
-  await a.waitForTimeout(2000);
-  const totalAfter = await total(a);
-  console.log(`${totalAfter > totalBefore ? "✓" : "✗"} visitor A's live count ${totalBefore} → ${totalAfter}`);
-
-  // --- descend the shaft on A ------------------------------------------------------
-  const height = await a.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
-  await a.evaluate((y) => window.scrollTo({ top: y }), height * 0.2);
-  await a.waitForTimeout(700);
-  await a.screenshot({ path: `${OUT}/03-slab.png` });
-  console.log("✓ a slab");
-
-  await a.evaluate((y) => window.scrollTo({ top: y }), height);
-  await a.waitForTimeout(700);
-  await a.screenshot({ path: `${OUT}/04-floor.png` });
-  console.log("✓ the floor");
-
-  // --- dig: drag our own token and watch it heal --------------------------------------
-  // Scroll so our token is mid-screen first: it rests wherever it landed — on
-  // the floor, or on top of a slab.
-  const probe = () => a.evaluate(() => (window as unknown as { __digPose?: () => { x: number; y: number } | null }).__digPose?.() ?? null);
-  const where = await probe();
-  if (where) {
-    await a.evaluate((dy) => window.scrollBy({ top: dy }), where.y - 450);
-    await a.waitForTimeout(600);
-  }
-  const pose = await probe();
-  if (pose && pose.y > 0 && pose.y < 900) {
-    await a.mouse.move(pose.x, pose.y);
-    await a.mouse.down();
-    await a.mouse.move(pose.x + 200, pose.y - 180, { steps: 16 });
-    await a.waitForTimeout(150);
-    await a.screenshot({ path: `${OUT}/05-digging.png` });
-    await a.mouse.up();
-    await a.waitForTimeout(9000);
-    await a.screenshot({ path: `${OUT}/06-healed.png` });
-    const after = await a.evaluate(() => (window as unknown as { __digPose?: () => { x: number; y: number } | null }).__digPose?.() ?? null);
-    const healed = after ? Math.hypot(after.x - pose.x, after.y - pose.y) < 12 : false;
-    console.log(`${healed ? "✓" : "✗"} dig and heal (drift ${after ? Math.hypot(after.x - pose.x, after.y - pose.y).toFixed(1) : "?"}px)`);
-  } else {
-    console.log(`· token not on screen for the dig (pose ${JSON.stringify(pose)})`);
+  for (const [file, name] of [
+    ["02-courthouse", "The Courthouse"],
+    ["03-hall", "Hall of Fame"],
+    ["04-lighthouse", "The Beacon"],
+    ["05-amphitheatre", "The Amphitheatre"],
+    ["06-foundry", "The Foundry"],
+  ] as const) {
+    await travel(day, name);
+    await day.screenshot({ path: `${OUT}/${file}.png` });
+    console.log(`✓ ${name}`);
   }
 
-  // --- reload: it is still there -----------------------------------------------------
-  await a.reload({ waitUntil: "domcontentloaded" });
-  await a.waitForSelector("canvas", { timeout: 45_000 });
-  await a.waitForTimeout(1500);
-  console.log((await a.getByText("It stays.").count()) ? "✓ reload remembers you left something" : "✗ reload forgot");
+  // The prompt should be showing after a travel; entering opens the panel.
+  const prompt = await day.getByRole("button", { name: /^Enter / }).count();
+  console.log(prompt ? "✓ door prompt shows after travel" : "✗ no door prompt");
+  await day.getByRole("button", { name: /^Enter / }).first().click();
+  await day.waitForTimeout(500);
+  await day.screenshot({ path: `${OUT}/07-panel.png` });
+  const heading = await day.locator('[role="dialog"] h2').first().textContent();
+  console.log(`✓ panel opened: ${heading}`);
+  await day.keyboard.press("Escape");
+  await day.waitForTimeout(300);
 
-  await a.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
-  await a.waitForTimeout(600);
-  await a.screenshot({ path: `${OUT}/07-flat.png`, fullPage: true });
-  console.log("✓ flat");
+  // Discovery should have been recorded.
+  const found = await day.evaluate(() => JSON.parse(localStorage.getItem("island:found") ?? "[]").length);
+  console.log(`${found > 0 ? "✓" : "✗"} discovery persisted (${found} found)`);
+
+  // Collision: walking into the sea should stop at the sand.
+  await travel(day, "The Beacon");
+  const before = await day.evaluate(() => JSON.parse(localStorage.getItem("island:found") ?? "[]").length);
+  await walk(day, "ArrowDown", 2600);
+  await day.screenshot({ path: `${OUT}/08-shoreline.png` });
+  console.log(`✓ walked to the shoreline (found ${before})`);
+
+  await day.goto(`${BASE}/flat`, { waitUntil: "domcontentloaded" });
+  await day.waitForTimeout(600);
+  await day.screenshot({ path: `${OUT}/09-flat.png`, fullPage: true });
+  console.log("✓ flat mode");
+  await day.context().close();
+
+  // --- night -----------------------------------------------------------------
+  const night = await open(22);
+  await night.screenshot({ path: `${OUT}/10-night-plaza.png` });
+  await travel(night, "The Cottage");
+  await night.screenshot({ path: `${OUT}/11-night-cottage.png` });
+  await travel(night, "The Beacon");
+  await night.screenshot({ path: `${OUT}/12-night-beacon.png` });
+  console.log("✓ night");
+  await night.context().close();
 
   await browser.close();
-
-  if (problems.length > 0) {
+  if (problems.length) {
     console.log(`\n--- ${problems.length} console problem(s) ---`);
-    for (const problem of [...new Set(problems)]) console.log(problem);
+    for (const p of [...new Set(problems)]) console.log(p);
   } else {
     console.log("\nNo console errors or warnings.");
   }
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });
